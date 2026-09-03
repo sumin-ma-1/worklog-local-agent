@@ -63,15 +63,9 @@ def chats(ctx: typer.Context) -> None:
 
 
 async def _chats(config: AppConfig) -> None:
-    from worklog_agent.collect import build_client, ensure_authorized, list_dialogs
-    from worklog_agent.storage import Storage
+    from worklog_agent.collect import load_dialogs
 
-    storage = Storage(config.data_root)
-    storage.ensure()
-    client = build_client(config, storage)
-    async with client:
-        await ensure_authorized(client, config)
-        rows = await list_dialogs(client)
+    rows = await load_dialogs(config, interactive=True)
     if not rows:
         typer.echo("대화가 없습니다.")
         return
@@ -124,3 +118,19 @@ def run(
     """수집 → 아카이브 → 정리 → 일지 생성을 한 번에 실행합니다."""
     path = asyncio.run(_pipeline(ctx).run(date))
     typer.echo(f"완료: {path}")
+
+
+@app.command()
+def dashboard(
+    ctx: typer.Context,
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8787, "--port"),
+) -> None:
+    """로컬 웹 대시보드를 엽니다."""
+    import uvicorn
+
+    from worklog_agent.web.app import create_app
+
+    config: AppConfig = ctx.obj
+    typer.echo(f"대시보드: http://{host}:{port}")
+    uvicorn.run(create_app(config.config_path), host=host, port=port, log_level="info")

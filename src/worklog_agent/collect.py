@@ -33,12 +33,28 @@ def build_client(config: AppConfig, storage: Storage) -> TelegramClient:
     return TelegramClient(session, api_id, api_hash)
 
 
-async def ensure_authorized(client: TelegramClient, config: AppConfig) -> None:
+async def ensure_authorized(
+    client: TelegramClient,
+    config: AppConfig,
+    *,
+    interactive: bool = True,
+) -> None:
     await client.connect()
     if not await client.is_user_authorized():
+        if not interactive:
+            raise RuntimeError("텔레그램 로그인이 완료되지 않았습니다. `worklog-agent auth` 를 실행하세요.")
         await client.start(phone=config.env.telegram_phone)
     if not await client.is_user_authorized():
         raise RuntimeError("텔레그램 로그인이 완료되지 않았습니다. `worklog-agent auth` 를 실행하세요.")
+
+
+async def load_dialogs(config: AppConfig, *, interactive: bool = False) -> list[dict[str, str | int]]:
+    storage = Storage(config.data_root)
+    storage.ensure()
+    client = build_client(config, storage)
+    async with client:
+        await ensure_authorized(client, config, interactive=interactive)
+        return await list_dialogs(client)
 
 
 async def list_dialogs(client: TelegramClient) -> list[dict[str, str | int]]:

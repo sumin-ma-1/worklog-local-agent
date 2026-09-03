@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from datetime import datetime
 from pathlib import Path
@@ -130,6 +129,67 @@ class Storage:
         path = self.journal_path(day)
         path.write_text(markdown.rstrip() + "\n", encoding="utf-8")
         return path
+
+    def list_journal_dates(self) -> list[str]:
+        if not self.journals.exists():
+            return []
+        return sorted((path.stem for path in self.journals.glob("*.md")), reverse=True)
+
+    def read_journal(self, day: str) -> str:
+        path = self.journal_path(day)
+        if not path.exists():
+            raise FileNotFoundError(f"일지가 없습니다: {path}")
+        return path.read_text(encoding="utf-8")
+
+    def list_daily_dates(self) -> list[str]:
+        if not self.daily.exists():
+            return []
+        return sorted((path.stem for path in self.daily.glob("*.json")), reverse=True)
+
+    def list_attachments(self, day: str | None = None) -> list[dict[str, str]]:
+        root = self.attachments
+        if not root.exists():
+            return []
+        files: list[dict[str, str]] = []
+        search_root = root / day if day else root
+        if not search_root.exists():
+            return []
+        for path in sorted(search_root.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(root)
+            files.append(
+                {
+                    "name": path.name,
+                    "relative": str(relative),
+                    "day": relative.parts[0] if relative.parts else "",
+                    "chat": relative.parts[1] if len(relative.parts) > 2 else "",
+                }
+            )
+        return files
+
+    def attachment_file(self, relative: str) -> Path:
+        root = self.attachments.resolve()
+        path = (self.attachments / relative).resolve()
+        if path != root and root not in path.parents:
+            raise ValueError("첨부파일 경로가 저장소 밖입니다.")
+        if not path.is_file():
+            raise FileNotFoundError(f"첨부파일이 없습니다: {relative}")
+        return path
+
+    def watched_chat_meta(self, chat_id: int) -> dict[str, object]:
+        path = self.raw / str(chat_id) / "state.json"
+        if not path.exists():
+            return {"chat_id": chat_id, "title": None, "last_id": 0}
+        state = ChatState.model_validate_json(path.read_text(encoding="utf-8"))
+        return {
+            "chat_id": state.chat_id,
+            "title": state.title,
+            "last_id": state.last_id,
+            "last_collected_at": (
+                state.last_collected_at.isoformat() if state.last_collected_at else None
+            ),
+        }
 
 
 def utcnow() -> datetime:

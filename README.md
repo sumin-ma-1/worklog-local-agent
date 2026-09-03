@@ -48,6 +48,13 @@ worklog-agent run           # 수집부터 일지까지
 worklog-agent run --date 2026-09-02
 ```
 
+웹 대시보드에서 일지를 보고, Telethon 업무방 ID를 추가·삭제할 수 있습니다.
+
+```bash
+worklog-agent dashboard
+# http://127.0.0.1:8787
+```
+
 단계별로 실행할 수도 있습니다.
 
 ```bash

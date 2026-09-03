@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>업무 일지 대시보드</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <p class="eyebrow">worklog-local-agent</p>
+    <h1>업무 일지</h1>
+    <nav>
+      <button class="nav-btn active" data-view="journals">일지</button>
+      <button class="nav-btn" data-view="chats">업무방</button>
+      <button class="nav-btn" data-view="run">실행</button>
+    </nav>
+    <div class="sidebar-meta" id="overview-meta"></div>
+  </aside>
+
+  <main>
+    <div id="banner" class="banner hidden"></div>
+
+    <section id="view-journals" class="view">
+      <header class="page-head">
+        <div>
+          <h2>날짜별 일지</h2>
+          <p>생성된 일지와 첨부파일을 확인합니다.</p>
+        </div>
+      </header>
+      <div class="split">
+        <div class="panel">
+          <ul id="journal-list" class="list"></ul>
+        </div>
+        <div class="panel detail" id="journal-detail">
+          <p class="empty">왼쪽에서 날짜를 선택하세요.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-chats" class="view hidden">
+      <header class="page-head">
+        <div>
+          <h2>업무방</h2>
+          <p>Telethon으로 읽을 채팅방 ID를 추가하거나 빼습니다. 변경은 config.yaml에 바로 저장됩니다.</p>
+        </div>
+      </header>
+      <div class="split">
+        <div class="panel">
+          <h3>수집 대상</h3>
+          <form id="add-chat-form" class="inline-form">
+            <input id="chat-id-input" name="id" placeholder="-1001234567890" autocomplete="off">
+            <button type="submit">ID 추가</button>
+          </form>
+          <ul id="watched-list" class="list"></ul>
+        </div>
+        <div class="panel">
+          <div class="row-head">
+            <h3>Telethon 대화 목록</h3>
+            <button type="button" id="refresh-dialogs">다시 불러오기</button>
+          </div>
+          <input id="dialog-filter" placeholder="제목 또는 ID 검색" autocomplete="off">
+          <ul id="dialog-list" class="list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-run" class="view hidden">
+      <header class="page-head">
+        <div>
+          <h2>파이프라인</h2>
+          <p>수집 → 첨부 아카이브 → 날짜별 정리 → Ollama 일지 생성</p>
+        </div>
+      </header>
+      <div class="panel narrow">
+        <form id="run-form" class="stack-form">
+          <label>
+            날짜
+            <input type="date" id="run-date" name="date" value="{{ today }}">
+          </label>
+          <button type="submit" id="run-button">이 날짜로 실행</button>
+        </form>
+        <p id="job-status" class="job-status">대기 중</p>
+      </div>
+    </section>
+  </main>
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
