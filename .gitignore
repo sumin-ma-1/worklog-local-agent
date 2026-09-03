@@ -1,0 +1,17 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.env
+config.yaml
+data/
+*.session
+*.session-journal
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.DS_Store

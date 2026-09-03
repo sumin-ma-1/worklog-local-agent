@@ -1,0 +1,20 @@
+# 복사: cp config.example.yaml config.yaml
+timezone: Asia/Seoul
+
+telegram:
+  session_name: worklog
+  # worklog-agent chats 로 확인한 채팅방 제목 또는 ID
+  chats:
+    - "팀 업무방"
+    # - -1001234567890
+
+storage:
+  root: data
+
+collect:
+  lookback_days: 7
+  skip_service_messages: true
+
+journal:
+  language: ko
+  temperature: 0.2
