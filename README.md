@@ -13,7 +13,7 @@ Telethon 수집 → 첨부파일 아카이브 → 날짜별 정리 → 업무 �
 1. **collect** — 지정한 채팅방 메시지를 증분 수집합니다.
 2. **archive** — 사진·문서·영상 등 첨부파일을 날짜/채팅방별로 저장합니다.
 3. **organize** — `Asia/Seoul` 날짜 기준으로 하루치 메시지를 묶습니다.
-4. **journal** — LLM으로 업무 일지를 작성합니다. API 키가 없으면 구조화된 초안만 만듭니다.
+4. **journal** — 로컬 Ollama 모델로 업무 일지를 작성합니다.
 
 ## 저장 위치
 
@@ -57,16 +57,17 @@ worklog-agent organize --date 2026-09-02
 worklog-agent journal --date 2026-09-02
 ```
 
-일지 생성은 OpenAI 호환 API를 씁니다. Ollama 예:
+일지 생성은 로컬 Ollama를 사용합니다. 기본 모델은 `gemma4:e4b`입니다.
 
+```bash
+ollama serve
+ollama pull gemma4:e4b
 ```
-OPENAI_BASE_URL=http://127.0.0.1:11434/v1
-OPENAI_API_KEY=ollama
-OPENAI_MODEL=llama3.1
-```
+
+모델은 `config.yaml`의 `journal.ollama.model` 또는 `OLLAMA_MODEL`로 바꿉니다.
 
 ## 요구 사항
 
 - Python 3.10+
 - 텔레그램 계정과 API ID/Hash
-- (선택) OpenAI 호환 LLM 엔드포인트
+- 로컬 Ollama (`ollama serve`)

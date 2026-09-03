@@ -18,3 +18,8 @@ collect:
 journal:
   language: ko
   temperature: 0.2
+  ollama:
+    host: http://127.0.0.1:11434
+    model: gemma4:e4b
+    timeout_seconds: 300
+    num_ctx: 16384

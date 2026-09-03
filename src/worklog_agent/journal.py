@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import json
-import logging
 from textwrap import dedent
-
-import httpx
 
 from worklog_agent.config import AppConfig
 from worklog_agent.models import DailyBundle
-
-logger = logging.getLogger(__name__)
+from worklog_agent.ollama import chat as ollama_chat
 
 JOURNAL_SYSTEM_PROMPT = dedent(
     """
@@ -84,11 +80,6 @@ def render_draft(bundle: DailyBundle) -> str:
 
 
 async def generate_journal(bundle: DailyBundle, config: AppConfig) -> str:
-    draft = render_draft(bundle)
-    if not config.has_llm:
-        logger.info("OPENAI_API_KEY 가 없어 구조화 초안만 저장합니다.")
-        return draft + "\n<!-- llm: skipped -->\n"
-
     payload = bundle.to_prompt_payload()
     user_prompt = (
         f"날짜: {bundle.date} ({bundle.timezone})\n"
@@ -96,31 +87,5 @@ async def generate_journal(bundle: DailyBundle, config: AppConfig) -> str:
         f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
     )
     system = JOURNAL_SYSTEM_PROMPT.format(date=bundle.date)
-    content = await _chat_complete(config, system, user_prompt)
+    content = await ollama_chat(config, system, user_prompt)
     return content.strip() + "\n"
-
-
-async def _chat_complete(config: AppConfig, system: str, user: str) -> str:
-    url = config.env.openai_base_url.rstrip("/") + "/chat/completions"
-    headers = {"Authorization": f"Bearer {config.env.openai_api_key}"}
-    body = {
-        "model": config.env.openai_model,
-        "temperature": config.journal.temperature,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    }
-    async with httpx.AsyncClient(timeout=120) as client:
-        response = await client.post(url, headers=headers, json=body)
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise RuntimeError(
-                f"LLM 호출 실패 ({response.status_code}): {response.text[:500]}"
-            ) from exc
-        data = response.json()
-    try:
-        return data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError(f"LLM 응답 형식을 해석하지 못했습니다: {data}") from exc

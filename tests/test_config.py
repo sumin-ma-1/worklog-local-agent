@@ -12,3 +12,5 @@ def test_load_example_config(tmp_path: Path, monkeypatch) -> None:
     assert config.timezone == "Asia/Seoul"
     assert config.telegram.chats == ["팀 업무방"]
     assert config.collect.lookback_days == 7
+    assert config.journal.ollama.host == "http://127.0.0.1:11434"
+    assert config.journal.ollama.model == "gemma4:e4b"

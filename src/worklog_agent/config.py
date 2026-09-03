@@ -14,9 +14,8 @@ class EnvSettings(BaseSettings):
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None
     telegram_phone: str | None = None
-    openai_api_key: str | None = None
-    openai_base_url: str = "https://api.openai.com/v1"
-    openai_model: str = "gpt-4o-mini"
+    ollama_host: str | None = None
+    ollama_model: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -28,7 +27,8 @@ class EnvSettings(BaseSettings):
         "telegram_api_id",
         "telegram_api_hash",
         "telegram_phone",
-        "openai_api_key",
+        "ollama_host",
+        "ollama_model",
         mode="before",
     )
     @classmethod
@@ -52,9 +52,17 @@ class CollectConfig(BaseModel):
     skip_service_messages: bool = True
 
 
+class OllamaConfig(BaseModel):
+    host: str = "http://127.0.0.1:11434"
+    model: str = "gemma4:e4b"
+    timeout_seconds: float = 300
+    num_ctx: int = 16384
+
+
 class JournalConfig(BaseModel):
     language: str = "ko"
     temperature: float = 0.2
+    ollama: OllamaConfig = Field(default_factory=OllamaConfig)
 
 
 class AppConfig(BaseModel):
@@ -68,10 +76,6 @@ class AppConfig(BaseModel):
     @property
     def data_root(self) -> Path:
         return Path(self.storage.root).expanduser().resolve()
-
-    @property
-    def has_llm(self) -> bool:
-        return bool(self.env.openai_api_key)
 
 
 def load_config(path: Path | None = None) -> AppConfig:
@@ -87,4 +91,8 @@ def load_config(path: Path | None = None) -> AppConfig:
 
     env = EnvSettings()
     config = AppConfig.model_validate({**data, "env": env})
+    if env.ollama_host:
+        config.journal.ollama.host = env.ollama_host
+    if env.ollama_model:
+        config.journal.ollama.model = env.ollama_model
     return config
