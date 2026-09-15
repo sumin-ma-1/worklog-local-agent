@@ -7,15 +7,30 @@ const state = {
   authorized: false,
 };
 
+let toastTimer = null;
+
 function showBanner(message, kind) {
-  const el = $("#banner");
+  const el = $("#toast");
+  if (!el) return;
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+    toastTimer = null;
+  }
   if (!message) {
-    el.className = "banner hidden";
+    el.className = "toast hidden";
     el.textContent = "";
     return;
   }
-  el.className = `banner ${kind || ""}`;
   el.textContent = message;
+  el.className = `toast show ${kind || "info"}`;
+  toastTimer = setTimeout(() => {
+    el.classList.remove("show");
+    toastTimer = setTimeout(() => {
+      el.className = "toast hidden";
+      el.textContent = "";
+      toastTimer = null;
+    }, 200);
+  }, kind === "error" ? 3200 : 2200);
 }
 
 async function api(path, options) {
@@ -78,7 +93,6 @@ function fillCredentials(credentials) {
   if (!credentials) return;
   if (credentials.api_id) $("#api-id-input").value = credentials.api_id;
   if (credentials.phone) {
-    $("#phone-input").value = credentials.phone;
     $("#login-phone-input").value = credentials.phone;
   }
   $("#api-hash-input").placeholder = credentials.has_api_hash
@@ -86,7 +100,6 @@ function fillCredentials(credentials) {
     : "API Hash";
   const parts = [];
   parts.push(credentials.ready ? "API 준비됨" : "API ID / Hash 필요");
-  if (credentials.phone) parts.push(credentials.phone);
   parts.push(credentials.env_path);
   $("#cred-status").textContent = parts.join(" · ");
 }
@@ -340,7 +353,6 @@ $("#credentials-form").addEventListener("submit", async (event) => {
     const payload = {
       api_id: $("#api-id-input").value.trim() || null,
       api_hash: $("#api-hash-input").value.trim() || null,
-      phone: $("#phone-input").value.trim() || null,
     };
     const data = await api("/api/telegram/credentials", {
       method: "POST",

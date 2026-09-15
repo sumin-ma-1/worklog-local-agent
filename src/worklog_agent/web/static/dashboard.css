@@ -53,10 +53,6 @@ body.login-mode main {
   padding: 0;
 }
 
-body.login-mode #banner {
-  margin-bottom: 12px;
-}
-
 body.login-mode #view-settings {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -286,7 +282,6 @@ input[type="password"],
 #chat-id-input,
 #api-id-input,
 #api-hash-input,
-#phone-input,
 #login-phone-input,
 #login-code-input,
 #login-password-input {
@@ -329,25 +324,43 @@ button[type="submit"]:disabled,
 
 .empty, .job-status { color: var(--muted); }
 
-.banner {
-  margin-bottom: 16px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: #e8eef8;
-  color: #1e3a8a;
-  border: 1px solid #c7d7f0;
+.toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.96);
+  z-index: 1000;
+  min-width: min(320px, calc(100vw - 32px));
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 16px 20px;
+  border-radius: 14px;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #fff;
+  background: rgba(15, 27, 45, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 48px rgba(15, 27, 45, 0.28);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
-.banner.error {
-  background: #fef2f2;
-  color: var(--danger);
-  border-color: #fecaca;
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
 }
 
-.banner.ok {
-  background: #ecfdf5;
-  color: var(--ok);
-  border-color: #bbf7d0;
+.toast.ok {
+  background: rgba(22, 101, 52, 0.95);
+}
+
+.toast.error {
+  background: rgba(185, 28, 28, 0.95);
+}
+
+.toast.info {
+  background: rgba(30, 58, 138, 0.95);
 }
 
 .journal-body {

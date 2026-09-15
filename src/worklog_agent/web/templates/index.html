@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body class="login-mode">
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
   <aside class="sidebar" id="app-sidebar">
     <p class="eyebrow">worklog-local-agent</p>
     <h1>업무 일지</h1>
@@ -20,8 +22,6 @@
   </aside>
 
   <main>
-    <div id="banner" class="banner hidden"></div>
-
     <section id="view-journals" class="view hidden">
       <header class="page-head">
         <div>
@@ -87,10 +87,6 @@
             <label>
               API Hash
               <input id="api-hash-input" name="api_hash" autocomplete="off" placeholder="저장된 값은 마스킹됩니다">
-            </label>
-            <label>
-              전화번호
-              <input id="phone-input" name="phone" autocomplete="tel" placeholder="+821012345678">
             </label>
             <button type="submit">.env 에 저장</button>
           </form>
