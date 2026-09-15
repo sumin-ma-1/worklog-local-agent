@@ -391,13 +391,14 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
 async def _run_pipeline(state: DashboardState, day: str | None) -> None:
     async with state.lock:
-        def progress(message: str, step: str | None = None) -> None:
+        async def progress(message: str, step: str | None = None) -> None:
             state.job = JobState(
                 status="running",
                 message=message,
                 step=step or state.job.step,
                 date=day,
             )
+            await asyncio.sleep(0)
 
         try:
             path = await Pipeline(state.config).run(day, on_progress=progress)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -279,10 +280,13 @@ async def collect_all(
             entity = await resolve_chat(client, spec)
             title = chat_title(entity)
             if on_progress:
-                on_progress(
+                maybe = on_progress(
                     f"{resolved} · 수집 중: {title} ({index}/{len(chats)})",
                     "collect",
                 )
+                if asyncio.iscoroutine(maybe):
+                    await maybe
+            await asyncio.sleep(0)
             total += await collect_chat(
                 client,
                 entity,

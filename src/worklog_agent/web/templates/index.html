@@ -77,9 +77,9 @@
           <span class="nav-icon material-symbols-outlined" aria-hidden="true">quick_phrases</span>
           <span class="nav-label">업무방</span>
         </button>
-        <button class="nav-btn" data-view="run" title="실행">
+        <button class="nav-btn" data-view="run" title="일지 생성">
           <span class="nav-icon material-symbols-outlined" aria-hidden="true">code</span>
-          <span class="nav-label">실행</span>
+          <span class="nav-label">일지 생성</span>
         </button>
       </nav>
       <div class="sidebar-meta" id="overview-meta"></div>
@@ -146,12 +146,18 @@
               <input type="date" id="run-date" name="date" value="{{ today }}">
             </label>
             <button type="submit" id="run-button" class="btn-with-icon">
-              <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
-              이 날짜로 실행
+              <span class="run-button-idle">
+                <span class="material-symbols-outlined" aria-hidden="true">backup</span>
+                생성
+              </span>
+              <span class="run-button-busy" aria-hidden="true">
+                <span class="busy-dot"></span>
+                <span class="busy-dot"></span>
+                <span class="busy-dot"></span>
+              </span>
             </button>
           </form>
           <div class="job-panel">
-            <p id="job-status" class="job-status">대기 중</p>
             <ol id="job-steps" class="job-steps">
               <li data-step="collect">메시지 수집</li>
               <li data-step="archive">첨부 저장</li>

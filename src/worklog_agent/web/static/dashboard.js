@@ -405,20 +405,16 @@ let lastJobStatus = null;
 const JOB_STEP_ORDER = ["collect", "archive", "organize", "model", "journal"];
 
 function renderJob(job) {
-  const el = $("#job-status");
   const button = $("#run-button");
   const steps = $("#job-steps");
-  if (!el || !job) return;
+  if (!job) return;
 
   const running = job.status === "running";
-  const label = {
-    idle: "대기 중",
-    running: job.message || "실행 중…",
-    done: job.message || (job.path ? `완료: ${job.path}` : "완료"),
-    error: `실패: ${job.message || ""}`,
-  }[job.status] || job.status;
-  el.textContent = label;
-  if (button) button.disabled = running;
+  if (button) {
+    button.disabled = running;
+    button.classList.toggle("is-busy", running);
+    button.setAttribute("aria-busy", running ? "true" : "false");
+  }
 
   if (steps) {
     steps.classList.toggle("is-active", running || job.status === "done" || job.status === "error");
@@ -448,7 +444,7 @@ async function pollJob() {
     return;
   }
   if (prev === "running" && job.status === "done") {
-    showBanner(job.message || "실행을 마쳤습니다.", "ok");
+    showBanner("일지 생성을 마쳤습니다.", "ok");
     loadJournals();
     loadOverview();
   } else if (prev === "running" && job.status === "error") {

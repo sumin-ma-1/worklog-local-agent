@@ -647,6 +647,65 @@ button[type="submit"]:disabled,
   cursor: not-allowed;
 }
 
+#run-button .run-button-idle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#run-button .run-button-busy {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 4.5em;
+  min-height: 1.2em;
+}
+
+#run-button.is-busy {
+  opacity: 1;
+  cursor: wait;
+}
+
+#run-button.is-busy .run-button-idle {
+  display: none;
+}
+
+#run-button.is-busy .run-button-busy {
+  display: inline-flex;
+}
+
+#run-button .busy-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #93c5fd;
+  animation: busy-dot-pulse 1.05s ease-in-out infinite;
+}
+
+#run-button .busy-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+#run-button .busy-dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+#run-button .busy-dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes busy-dot-pulse {
+  0%,
+  80%,
+  100% {
+    background: rgba(255, 255, 255, 0.35);
+  }
+  40% {
+    background: #ffffff;
+  }
+}
+
 .ghost-btn {
   font: inherit;
   cursor: pointer;

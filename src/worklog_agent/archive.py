@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import timezone
@@ -46,7 +47,10 @@ async def archive_pending(config: AppConfig, storage: Storage, *, on_progress=No
     if not pending:
         logger.info("다운로드할 첨부파일이 없습니다.")
         if on_progress:
-            on_progress("첨부 없음 — 건너뜀", "archive")
+            maybe = on_progress("첨부 없음 — 건너뜀", "archive")
+            if asyncio.iscoroutine(maybe):
+                await maybe
+        await asyncio.sleep(0)
         return 0
 
     chats_by_id: dict[int, list[MessageRecord]] = {}
@@ -61,10 +65,13 @@ async def archive_pending(config: AppConfig, storage: Storage, *, on_progress=No
         for index, (chat_id, records) in enumerate(chat_items, start=1):
             title = records[0].chat_title
             if on_progress:
-                on_progress(
+                maybe = on_progress(
                     f"첨부 저장 중: {title} ({index}/{len(chat_items)}, {len(records)}개)",
                     "archive",
                 )
+                if asyncio.iscoroutine(maybe):
+                    await maybe
+            await asyncio.sleep(0)
             entity = await _resolve_entity(client, config, chat_id, title)
             existing = {item.id: item for item in storage.read_messages(chat_id)}
             chat_saved = 0
