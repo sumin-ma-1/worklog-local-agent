@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>업무 일지 대시보드</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
   <link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body class="login-mode">
@@ -59,15 +60,34 @@
 
   <div id="app-shell" class="app-shell hidden">
     <aside class="sidebar" id="app-sidebar">
-      <p class="eyebrow">worklog-local-agent</p>
-      <h1>업무 일지</h1>
+      <div class="sidebar-top">
+        <div class="sidebar-brand">
+          <p class="eyebrow">worklog-local-agent</p>
+          <h1>업무 일지</h1>
+        </div>
+        <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-label="사이드바 접기" title="사이드바 접기">
+          <span class="material-symbols-outlined" aria-hidden="true">thumbnail_bar</span>
+        </button>
+      </div>
       <nav>
-        <button class="nav-btn active" data-view="journals">일지</button>
-        <button class="nav-btn" data-view="chats">업무방</button>
-        <button class="nav-btn" data-view="run">실행</button>
+        <button class="nav-btn active" data-view="journals" title="일지">
+          <span class="nav-icon">일</span>
+          <span class="nav-label">일지</span>
+        </button>
+        <button class="nav-btn" data-view="chats" title="업무방">
+          <span class="nav-icon">방</span>
+          <span class="nav-label">업무방</span>
+        </button>
+        <button class="nav-btn" data-view="run" title="실행">
+          <span class="nav-icon">실</span>
+          <span class="nav-label">실행</span>
+        </button>
       </nav>
       <div class="sidebar-meta" id="overview-meta"></div>
-      <button type="button" id="sidebar-logout" class="nav-btn logout-btn">로그아웃</button>
+      <button type="button" id="sidebar-logout" class="nav-btn logout-btn" title="로그아웃">
+        <span class="nav-icon">나</span>
+        <span class="nav-label">로그아웃</span>
+      </button>
     </aside>
 
     <main>

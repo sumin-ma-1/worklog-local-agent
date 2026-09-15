@@ -311,6 +311,38 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+const SIDEBAR_KEY = "worklog.sidebarCollapsed";
+
+function applySidebarCollapsed(collapsed) {
+  const shell = $("#app-shell");
+  const toggle = $("#sidebar-toggle");
+  if (!shell) return;
+  shell.classList.toggle("sidebar-collapsed", Boolean(collapsed));
+  if (toggle) {
+    toggle.setAttribute("aria-label", collapsed ? "사이드바 펼치기" : "사이드바 접기");
+    toggle.title = collapsed ? "사이드바 펼치기" : "사이드바 접기";
+  }
+  try {
+    localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function initSidebarToggle() {
+  let collapsed = false;
+  try {
+    collapsed = localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch (_) {
+    collapsed = false;
+  }
+  applySidebarCollapsed(collapsed);
+  $("#sidebar-toggle")?.addEventListener("click", () => {
+    const next = !$("#app-shell")?.classList.contains("sidebar-collapsed");
+    applySidebarCollapsed(next);
+  });
+}
+
 document.querySelectorAll(".nav-btn[data-view]").forEach((btn) => {
   btn.addEventListener("click", () => {
     setView(btn.dataset.view);
@@ -401,6 +433,8 @@ $("#login-restart-password")?.addEventListener("click", restartLogin);
 $("#sidebar-logout")?.addEventListener("click", () => {
   doLogout().catch((err) => showBanner(err.message, "error"));
 });
+
+initSidebarToggle();
 
 $("#refresh-dialogs").addEventListener("click", loadDialogs);
 $("#dialog-filter").addEventListener("input", (event) => renderDialogs(event.target.value));
