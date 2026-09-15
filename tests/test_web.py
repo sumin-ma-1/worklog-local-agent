@@ -62,3 +62,30 @@ def test_dialogs_mark_watched(tmp_path: Path) -> None:
         data = client.get("/api/dialogs").json()
     assert data["dialogs"][0]["watched"] is True
     assert data["dialogs"][0]["title"] == "팀 업무방"
+
+
+def test_save_credentials_via_api(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
+    client = TestClient(create_app(config_path))
+    response = client.post(
+        "/api/telegram/credentials",
+        json={"api_id": "999001", "api_hash": "hashvalue001", "phone": "+82100001111"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["credentials"]["ready"] is True
+    assert body["credentials"]["api_id"] == 999001
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "TELEGRAM_API_ID=999001" in env_text
+
+    home = client.get("/")
+    assert "텔레그램 로그인" in home.text or "텔레그램 설정" in home.text
+    assert "로그인" in home.text
+
+
+def test_login_start_requires_credentials(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
+    client = TestClient(create_app(config_path))
+    response = client.post("/api/telegram/login/start", json={"phone": "+821011122233"})
+    assert response.status_code == 503
+    assert "API" in response.json()["detail"]

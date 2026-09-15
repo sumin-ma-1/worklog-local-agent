@@ -22,7 +22,7 @@ def require_telegram_credentials(config: AppConfig) -> tuple[int, str]:
     if not api_id or not api_hash:
         raise RuntimeError(
             "TELEGRAM_API_ID / TELEGRAM_API_HASH 가 필요합니다. "
-            ".env 를 확인하세요. (https://my.telegram.org)"
+            "대시보드 설정 탭 또는 .env 를 확인하세요. (https://my.telegram.org)"
         )
     return api_id, api_hash
 
@@ -42,10 +42,16 @@ async def ensure_authorized(
     await client.connect()
     if not await client.is_user_authorized():
         if not interactive:
-            raise RuntimeError("텔레그램 로그인이 완료되지 않았습니다. `worklog-agent auth` 를 실행하세요.")
+            raise RuntimeError(
+                "텔레그램 로그인이 완료되지 않았습니다. "
+                "대시보드 설정 탭에서 로그인하거나 `worklog-agent auth` 를 실행하세요."
+            )
         await client.start(phone=config.env.telegram_phone)
     if not await client.is_user_authorized():
-        raise RuntimeError("텔레그램 로그인이 완료되지 않았습니다. `worklog-agent auth` 를 실행하세요.")
+        raise RuntimeError(
+            "텔레그램 로그인이 완료되지 않았습니다. "
+            "대시보드 설정 탭에서 로그인하거나 `worklog-agent auth` 를 실행하세요."
+        )
 
 
 async def load_dialogs(config: AppConfig, *, interactive: bool = False) -> list[dict[str, str | int]]:

@@ -20,9 +20,18 @@ from worklog_agent.config import (
     load_config,
     normalize_chat_ref,
     remove_chat_ref,
+    save_telegram_credentials,
+    telegram_credential_summary,
 )
 from worklog_agent.pipeline import Pipeline
 from worklog_agent.storage import Storage
+from worklog_agent.telegram_auth import (
+    LoginSession,
+    auth_status,
+    start_login,
+    submit_code,
+    submit_password,
+)
 
 logger = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).parent
@@ -41,6 +50,7 @@ class DashboardState:
     config_path: Path
     config: AppConfig
     job: JobState = field(default_factory=JobState)
+    login: LoginSession = field(default_factory=LoginSession)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     task: asyncio.Task | None = None
 
@@ -60,6 +70,24 @@ class ChatBody(BaseModel):
 
 class RunBody(BaseModel):
     date: str | None = Field(default=None)
+
+
+class CredentialsBody(BaseModel):
+    api_id: str | int | None = None
+    api_hash: str | None = None
+    phone: str | None = None
+
+
+class PhoneBody(BaseModel):
+    phone: str
+
+
+class CodeBody(BaseModel):
+    code: str
+
+
+class PasswordBody(BaseModel):
+    password: str
 
 
 def _today(config: AppConfig) -> str:
@@ -111,6 +139,15 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     async def overview() -> dict:
         state.reload()
         storage = state.storage()
+        credentials = telegram_credential_summary(state.config)
+        try:
+            telegram = await auth_status(state.config) if credentials["ready"] else {
+                "authorized": False,
+                "user": None,
+                "message": "API ID / Hash 가 필요합니다.",
+            }
+        except Exception as exc:
+            telegram = {"authorized": False, "user": None, "message": str(exc)}
         return {
             "timezone": state.config.timezone,
             "model": state.config.journal.ollama.model,
@@ -118,7 +155,80 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             "chat_count": len(state.config.telegram.chats),
             "journal_count": len(storage.list_journal_dates()),
             "job": state.job.__dict__,
+            "credentials": credentials,
+            "telegram": telegram,
+            "login_stage": state.login.stage,
         }
+
+    @app.get("/api/telegram/status")
+    async def telegram_status() -> dict:
+        state.reload()
+        credentials = telegram_credential_summary(state.config)
+        try:
+            telegram = await auth_status(state.config) if credentials["ready"] else {
+                "authorized": False,
+                "user": None,
+                "message": "API ID / Hash 가 필요합니다.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return {
+            "credentials": credentials,
+            "telegram": telegram,
+            "login_stage": state.login.stage,
+        }
+
+    @app.post("/api/telegram/credentials")
+    async def save_credentials(body: CredentialsBody) -> dict:
+        state.reload()
+        try:
+            state.config = save_telegram_credentials(
+                state.config,
+                api_id=body.api_id,
+                api_hash=body.api_hash,
+                phone=body.phone,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "credentials": telegram_credential_summary(state.config),
+            "message": "자격 증명을 .env 에 저장했습니다.",
+        }
+
+    @app.post("/api/telegram/login/start")
+    async def login_start(body: PhoneBody) -> dict:
+        state.reload()
+        try:
+            if body.phone.strip():
+                state.config = save_telegram_credentials(state.config, phone=body.phone)
+            result = await start_login(state.config, body.phone, state.login)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return result
+
+    @app.post("/api/telegram/login/code")
+    async def login_code(body: CodeBody) -> dict:
+        state.reload()
+        try:
+            result = await submit_code(state.config, body.code, state.login)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return result
+
+    @app.post("/api/telegram/login/password")
+    async def login_password(body: PasswordBody) -> dict:
+        state.reload()
+        try:
+            result = await submit_password(state.config, body.password, state.login)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return result
 
     @app.get("/api/chats")
     async def list_chats() -> dict:

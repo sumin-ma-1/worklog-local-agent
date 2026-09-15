@@ -1,8 +1,10 @@
 const $ = (sel) => document.querySelector(sel);
 
 const state = {
-  view: "journals",
+  view: "settings",
   dialogs: [],
+  loginStage: "idle",
+  authorized: false,
 };
 
 function showBanner(message, kind) {
@@ -23,12 +25,17 @@ async function api(path, options) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.detail || response.statusText);
+    const detail = data.detail;
+    throw new Error(typeof detail === "string" ? detail : response.statusText);
   }
   return data;
 }
 
 function setView(name) {
+  if (!state.authorized && name !== "settings") {
+    name = "settings";
+    showBanner("텔레그램 로그인 후 이용할 수 있습니다.", "error");
+  }
   state.view = name;
   document.querySelectorAll(".view").forEach((el) => el.classList.add("hidden"));
   document.querySelectorAll(".nav-btn").forEach((btn) => {
@@ -37,17 +44,88 @@ function setView(name) {
   $(`#view-${name}`).classList.remove("hidden");
 }
 
+function applyAuthVisibility(authorized) {
+  state.authorized = Boolean(authorized);
+  document.querySelectorAll(".nav-btn.auth-only").forEach((btn) => {
+    btn.classList.toggle("hidden", !state.authorized);
+  });
+  const settingsBtn = $("#nav-settings");
+  if (settingsBtn) {
+    settingsBtn.textContent = state.authorized ? "설정" : "로그인";
+  }
+  const title = $("#settings-title");
+  const help = $("#settings-help");
+  if (title) title.textContent = state.authorized ? "텔레그램 설정" : "텔레그램 로그인";
+  if (help) {
+    help.innerHTML = state.authorized
+      ? `<a href="https://my.telegram.org" target="_blank" rel="noreferrer">my.telegram.org</a> 자격 증명과 로그인 상태를 관리합니다.`
+      : `<a href="https://my.telegram.org" target="_blank" rel="noreferrer">my.telegram.org</a> 에서 API ID / Hash 를 발급받아 저장한 뒤, 전화번호로 로그인하세요. 로그인되면 일지·업무방·실행 메뉴가 열립니다.`;
+  }
+  if (!state.authorized) {
+    setView("settings");
+  }
+}
+
+function renderLoginForms(stage) {
+  state.loginStage = stage || "idle";
+  $("#login-code-form").classList.toggle("hidden", state.loginStage !== "code");
+  $("#login-password-form").classList.toggle("hidden", state.loginStage !== "password");
+}
+
+function fillCredentials(credentials) {
+  if (!credentials) return;
+  if (credentials.api_id) $("#api-id-input").value = credentials.api_id;
+  if (credentials.phone) {
+    $("#phone-input").value = credentials.phone;
+    $("#login-phone-input").value = credentials.phone;
+  }
+  $("#api-hash-input").placeholder = credentials.has_api_hash
+    ? `저장됨 (${credentials.api_hash_masked})`
+    : "API Hash";
+  const parts = [];
+  parts.push(credentials.ready ? "API 준비됨" : "API ID / Hash 필요");
+  if (credentials.phone) parts.push(credentials.phone);
+  parts.push(credentials.env_path);
+  $("#cred-status").textContent = parts.join(" · ");
+}
+
+function fillTelegramStatus(telegram, stage) {
+  if (!telegram) return;
+  applyAuthVisibility(Boolean(telegram.authorized));
+  if (telegram.authorized && telegram.user) {
+    const user = telegram.user;
+    $("#login-status").textContent = `로그인됨 · ${user.name}${user.username ? ` (@${user.username})` : ""}`;
+  } else {
+    $("#login-status").textContent = telegram.message || "로그인 필요";
+  }
+  renderLoginForms(stage || (telegram.authorized ? "authorized" : state.loginStage));
+}
+
 async function loadOverview() {
   const data = await api("/api/overview");
+  const tg = data.telegram || {};
+  fillCredentials(data.credentials);
+  fillTelegramStatus(data.telegram, data.login_stage);
+  const authLabel = tg.authorized
+    ? `TG ${escapeHtml(tg.user?.name || "로그인됨")}`
+    : "TG 미로그인";
   $("#overview-meta").innerHTML = `
     <div>${data.timezone}</div>
     <div>모델 ${escapeHtml(data.model)}</div>
     <div>업무방 ${data.chat_count} · 일지 ${data.journal_count}</div>
+    <div>${authLabel}</div>
   `;
   renderJob(data.job);
 }
 
+async function loadTelegramStatus() {
+  const data = await api("/api/telegram/status");
+  fillCredentials(data.credentials);
+  fillTelegramStatus(data.telegram, data.login_stage);
+}
+
 async function loadJournals() {
+  if (!state.authorized) return;
   const data = await api("/api/journals");
   const list = $("#journal-list");
   if (!data.journals.length) {
@@ -207,6 +285,7 @@ function renderJob(job) {
 }
 
 async function pollJob() {
+  if (!state.authorized) return;
   const job = await api("/api/job");
   renderJob(job);
   if (job.status === "running") {
@@ -225,13 +304,22 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+function onAuthorizedNavigate(view) {
+  if (view === "chats") {
+    loadWatched();
+    if (!state.dialogs.length) loadDialogs();
+  }
+  if (view === "journals") loadJournals();
+  if (view === "run") pollJob();
+  if (view === "settings") {
+    loadTelegramStatus().catch((err) => showBanner(err.message, "error"));
+  }
+}
+
 document.querySelectorAll(".nav-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     setView(btn.dataset.view);
-    if (btn.dataset.view === "chats") {
-      loadWatched();
-      if (!state.dialogs.length) loadDialogs();
-    }
+    onAuthorizedNavigate(btn.dataset.view);
   });
 });
 
@@ -242,6 +330,88 @@ $("#add-chat-form").addEventListener("submit", (event) => {
   addChat(id).then(() => {
     $("#chat-id-input").value = "";
   });
+});
+
+$("#credentials-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const payload = {
+      api_id: $("#api-id-input").value.trim() || null,
+      api_hash: $("#api-hash-input").value.trim() || null,
+      phone: $("#phone-input").value.trim() || null,
+    };
+    const data = await api("/api/telegram/credentials", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    $("#api-hash-input").value = "";
+    fillCredentials(data.credentials);
+    showBanner(data.message, "ok");
+    await loadOverview();
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+});
+
+$("#login-start-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const phone = $("#login-phone-input").value.trim();
+    const data = await api("/api/telegram/login/start", {
+      method: "POST",
+      body: JSON.stringify({ phone }),
+    });
+    renderLoginForms(data.stage);
+    $("#login-status").textContent = data.message;
+    showBanner(data.message, data.stage === "authorized" ? "ok" : "");
+    if (data.stage === "authorized") {
+      await loadOverview();
+      setView("journals");
+      loadJournals();
+    }
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+});
+
+$("#login-code-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const data = await api("/api/telegram/login/code", {
+      method: "POST",
+      body: JSON.stringify({ code: $("#login-code-input").value.trim() }),
+    });
+    renderLoginForms(data.stage);
+    $("#login-status").textContent = data.message;
+    showBanner(data.message, data.stage === "authorized" ? "ok" : "");
+    $("#login-code-input").value = "";
+    if (data.stage === "authorized") {
+      await loadOverview();
+      setView("journals");
+      loadJournals();
+    }
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+});
+
+$("#login-password-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const data = await api("/api/telegram/login/password", {
+      method: "POST",
+      body: JSON.stringify({ password: $("#login-password-input").value }),
+    });
+    renderLoginForms(data.stage);
+    $("#login-status").textContent = data.message;
+    showBanner(data.message, "ok");
+    $("#login-password-input").value = "";
+    await loadOverview();
+    setView("journals");
+    loadJournals();
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
 });
 
 $("#refresh-dialogs").addEventListener("click", loadDialogs);
@@ -260,6 +430,14 @@ $("#run-form").addEventListener("submit", async (event) => {
   }
 });
 
-loadOverview();
-loadJournals();
-pollJob();
+loadOverview()
+  .then(() => {
+    if (state.authorized) {
+      setView("journals");
+      loadJournals();
+      pollJob();
+    } else {
+      setView("settings");
+    }
+  })
+  .catch((err) => showBanner(err.message, "error"));

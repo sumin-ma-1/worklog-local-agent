@@ -73,16 +73,22 @@ class AppConfig(BaseModel):
     journal: JournalConfig = Field(default_factory=JournalConfig)
     env: EnvSettings = Field(default_factory=EnvSettings)
     config_path: Path = Path("config.yaml")
+    env_path: Path = Path(".env")
 
     @property
     def data_root(self) -> Path:
         return Path(self.storage.root).expanduser().resolve()
 
 
+def resolve_env_path(config_path: Path) -> Path:
+    return (Path(config_path).expanduser().resolve().parent / ".env")
+
+
 def load_config(path: Path | None = None) -> AppConfig:
     config_path = Path(path or "config.yaml").expanduser()
     if not config_path.is_absolute():
         config_path = config_path.resolve()
+    env_path = resolve_env_path(config_path)
     data: dict = {}
     if config_path.exists():
         loaded = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
@@ -92,13 +98,108 @@ def load_config(path: Path | None = None) -> AppConfig:
     else:
         logger.warning("설정 파일이 없어 기본값을 사용합니다: %s", config_path)
 
-    env = EnvSettings()
-    config = AppConfig.model_validate({**data, "env": env, "config_path": config_path})
+    env = EnvSettings(_env_file=env_path if env_path.exists() else None)
+    config = AppConfig.model_validate(
+        {**data, "env": env, "config_path": config_path, "env_path": env_path}
+    )
     if env.ollama_host:
         config.journal.ollama.host = env.ollama_host
     if env.ollama_model:
         config.journal.ollama.model = env.ollama_model
     return config
+
+
+_ENV_KEYS = (
+    "TELEGRAM_API_ID",
+    "TELEGRAM_API_HASH",
+    "TELEGRAM_PHONE",
+    "OLLAMA_HOST",
+    "OLLAMA_MODEL",
+)
+
+
+def save_env_values(env_path: Path, updates: dict[str, str | int | None]) -> Path:
+    """Update selected keys in .env while preserving unrelated lines when possible."""
+    env_path = Path(env_path)
+    existing_lines = (
+        env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    )
+    normalized: dict[str, str] = {}
+    for key, value in updates.items():
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            normalized[key] = text
+
+    seen: set[str] = set()
+    rewritten: list[str] = []
+    for line in existing_lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.partition("=")[0].strip()
+            if key in normalized:
+                rewritten.append(f"{key}={normalized[key]}")
+                seen.add(key)
+                continue
+        rewritten.append(line)
+
+    for key in _ENV_KEYS:
+        if key in normalized and key not in seen:
+            rewritten.append(f"{key}={normalized[key]}")
+
+    if not existing_lines and not rewritten:
+        rewritten = [
+            "# https://my.telegram.org → API development tools",
+            "TELEGRAM_API_ID=",
+            "TELEGRAM_API_HASH=",
+            "TELEGRAM_PHONE=",
+        ]
+
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text("\n".join(rewritten).rstrip() + "\n", encoding="utf-8")
+    return env_path
+
+
+def save_telegram_credentials(
+    config: AppConfig,
+    *,
+    api_id: str | int | None = None,
+    api_hash: str | None = None,
+    phone: str | None = None,
+) -> AppConfig:
+    updates: dict[str, str | int | None] = {}
+    if api_id is not None and str(api_id).strip():
+        text = str(api_id).strip()
+        if not text.isdigit():
+            raise ValueError("TELEGRAM_API_ID 는 숫자여야 합니다.")
+        updates["TELEGRAM_API_ID"] = text
+    if api_hash is not None and str(api_hash).strip():
+        updates["TELEGRAM_API_HASH"] = str(api_hash).strip()
+    if phone is not None and str(phone).strip():
+        updates["TELEGRAM_PHONE"] = str(phone).strip()
+    if not updates:
+        raise ValueError("저장할 값이 없습니다.")
+    save_env_values(config.env_path, updates)
+    return load_config(config.config_path)
+
+
+def telegram_credential_summary(config: AppConfig) -> dict[str, object]:
+    env = config.env
+    api_hash = env.telegram_api_hash or ""
+    phone = env.telegram_phone or ""
+    return {
+        "has_api_id": bool(env.telegram_api_id),
+        "has_api_hash": bool(api_hash),
+        "has_phone": bool(phone),
+        "api_id": env.telegram_api_id,
+        "api_hash_masked": (
+            f"{'*' * max(0, len(api_hash) - 4)}{api_hash[-4:]}" if api_hash else ""
+        ),
+        "phone": phone,
+        "env_path": str(config.env_path),
+        "ready": bool(env.telegram_api_id and api_hash),
+    }
 
 
 def normalize_chat_ref(value: str | int) -> int | str:

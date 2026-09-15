@@ -160,7 +160,21 @@ main { padding: 32px 40px 64px; }
   margin-bottom: 14px;
 }
 
-.stack-form { flex-direction: column; align-items: stretch; }
+.stack-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.stack-form .meta,
+.panel > .meta {
+  margin: 0 0 12px;
+}
+
+a {
+  color: var(--accent-hover);
+}
 
 input, button {
   font: inherit;
