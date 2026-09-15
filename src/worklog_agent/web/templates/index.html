@@ -6,14 +6,14 @@
   <title>업무 일지 대시보드</title>
   <link rel="stylesheet" href="/static/dashboard.css">
 </head>
-<body>
-  <aside class="sidebar">
+<body class="login-mode">
+  <aside class="sidebar" id="app-sidebar">
     <p class="eyebrow">worklog-local-agent</p>
     <h1>업무 일지</h1>
     <nav>
       <button class="nav-btn auth-only hidden" data-view="journals" data-requires-auth>일지</button>
       <button class="nav-btn auth-only hidden" data-view="chats" data-requires-auth>업무방</button>
-      <button class="nav-btn active" data-view="settings" id="nav-settings">로그인</button>
+      <button class="nav-btn" data-view="settings" id="nav-settings">설정</button>
       <button class="nav-btn auth-only hidden" data-view="run" data-requires-auth>실행</button>
     </nav>
     <div class="sidebar-meta" id="overview-meta"></div>
@@ -67,19 +67,17 @@
     </section>
 
     <section id="view-settings" class="view">
-      <header class="page-head">
-        <div>
-          <h2 id="settings-title">텔레그램 로그인</h2>
-          <p id="settings-help">
-            <a href="https://my.telegram.org" target="_blank" rel="noreferrer">my.telegram.org</a>
-            에서 API ID / Hash 를 발급받아 저장한 뒤, 전화번호로 로그인하세요.
-            로그인되면 일지·업무방·실행 메뉴가 열립니다.
-          </p>
-        </div>
-      </header>
-      <div class="split">
+      <div class="login-hero">
+        <p class="eyebrow">worklog-local-agent</p>
+        <h2 id="settings-title">텔레그램 로그인</h2>
+        <p id="settings-help">
+          <a href="https://my.telegram.org" target="_blank" rel="noreferrer">my.telegram.org</a>
+          에서 API ID / Hash 를 발급받아 저장한 뒤, 전화번호로 로그인하세요.
+        </p>
+      </div>
+      <div class="settings-grid">
         <div class="panel">
-          <h3>API 자격 증명</h3>
+          <h3>1. API 자격 증명</h3>
           <p id="cred-status" class="meta">불러오는 중…</p>
           <form id="credentials-form" class="stack-form">
             <label>
@@ -98,7 +96,7 @@
           </form>
         </div>
         <div class="panel">
-          <h3>로그인</h3>
+          <h3>2. 로그인</h3>
           <p id="login-status" class="meta">상태 확인 중…</p>
           <form id="login-start-form" class="stack-form">
             <label>

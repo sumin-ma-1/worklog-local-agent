@@ -32,6 +32,77 @@ body {
   grid-template-columns: 240px 1fr;
 }
 
+/* ---- centered login (first render) ---- */
+body.login-mode {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 28px 16px;
+  background:
+    radial-gradient(900px 420px at 50% 0%, #c9d9ff 0%, transparent 55%),
+    linear-gradient(180deg, #eef3fb 0%, #f7f9fc 55%, #f4f7fb 100%);
+}
+
+body.login-mode .sidebar {
+  display: none;
+}
+
+body.login-mode main {
+  width: min(460px, 100%);
+  padding: 0;
+}
+
+body.login-mode #banner {
+  margin-bottom: 12px;
+}
+
+body.login-mode #view-settings {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 28px 24px 24px;
+  box-shadow: 0 18px 50px rgba(15, 27, 45, 0.1);
+}
+
+body.login-mode .login-hero {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+body.login-mode .login-hero .eyebrow {
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+body.login-mode .login-hero h2 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  color: var(--accent);
+  letter-spacing: -0.03em;
+}
+
+body.login-mode .login-hero p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+body.login-mode .settings-grid {
+  display: grid;
+  gap: 14px;
+}
+
+body.login-mode .settings-grid .panel {
+  min-height: 0;
+  box-shadow: none;
+}
+
+body.login-mode button[type="submit"] {
+  width: 100%;
+}
+
+/* ---- dashboard shell ---- */
 .sidebar {
   background: linear-gradient(180deg, #0b1f44 0%, #122a5c 100%);
   color: var(--sidebar-text);
@@ -91,6 +162,28 @@ main { padding: 32px 40px 64px; }
 .page-head { margin-bottom: 20px; }
 .page-head h2 { margin: 0 0 6px; font-size: 26px; color: var(--accent); }
 .page-head p { margin: 0; color: var(--muted); }
+
+.login-hero {
+  margin-bottom: 20px;
+}
+
+.login-hero h2 {
+  margin: 0 0 6px;
+  font-size: 26px;
+  color: var(--accent);
+}
+
+.login-hero p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
 
 .split {
   display: grid;
@@ -160,6 +253,11 @@ main { padding: 32px 40px 64px; }
   margin-bottom: 14px;
 }
 
+.stack-form {
+  flex-direction: column;
+  align-items: stretch;
+}
+
 .stack-form label {
   display: grid;
   gap: 6px;
@@ -180,7 +278,18 @@ input, button {
   font: inherit;
 }
 
-input[type="text"], input:not([type]), input[type="date"], #dialog-filter, #chat-id-input {
+input[type="text"],
+input:not([type]),
+input[type="date"],
+input[type="password"],
+#dialog-filter,
+#chat-id-input,
+#api-id-input,
+#api-hash-input,
+#phone-input,
+#login-phone-input,
+#login-code-input,
+#login-password-input {
   width: 100%;
   border: 1px solid var(--line);
   background: #fff;
@@ -250,7 +359,7 @@ button[type="submit"]:disabled,
 .attach-list a { color: var(--accent-hover); }
 
 @media (max-width: 900px) {
-  body { grid-template-columns: 1fr; }
+  body:not(.login-mode) { grid-template-columns: 1fr; }
   .sidebar { min-height: auto; }
-  .split { grid-template-columns: 1fr; }
+  .split, .settings-grid { grid-template-columns: 1fr; }
 }

@@ -46,12 +46,14 @@ function setView(name) {
 
 function applyAuthVisibility(authorized) {
   state.authorized = Boolean(authorized);
+  document.body.classList.toggle("login-mode", !state.authorized);
   document.querySelectorAll(".nav-btn.auth-only").forEach((btn) => {
     btn.classList.toggle("hidden", !state.authorized);
   });
   const settingsBtn = $("#nav-settings");
   if (settingsBtn) {
-    settingsBtn.textContent = state.authorized ? "설정" : "로그인";
+    settingsBtn.classList.toggle("hidden", !state.authorized);
+    settingsBtn.textContent = "설정";
   }
   const title = $("#settings-title");
   const help = $("#settings-help");
@@ -59,7 +61,7 @@ function applyAuthVisibility(authorized) {
   if (help) {
     help.innerHTML = state.authorized
       ? `<a href="https://my.telegram.org" target="_blank" rel="noreferrer">my.telegram.org</a> 자격 증명과 로그인 상태를 관리합니다.`
-      : `<a href="https://my.telegram.org" target="_blank" rel="noreferrer">my.telegram.org</a> 에서 API ID / Hash 를 발급받아 저장한 뒤, 전화번호로 로그인하세요. 로그인되면 일지·업무방·실행 메뉴가 열립니다.`;
+      : `<a href="https://my.telegram.org" target="_blank" rel="noreferrer">my.telegram.org</a> 에서 API ID / Hash 를 발급받아 저장한 뒤, 전화번호로 로그인하세요.`;
   }
   if (!state.authorized) {
     setView("settings");
