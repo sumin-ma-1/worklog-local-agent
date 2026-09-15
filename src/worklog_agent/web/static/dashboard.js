@@ -60,6 +60,9 @@ function setView(name) {
   if (name === "journals") {
     requestAnimationFrame(updateJournalScrollFade);
   }
+  if (name === "run") {
+    syncRunStepsForSelectedDate();
+  }
 }
 
 function applyAuthVisibility(authorized) {
@@ -265,6 +268,7 @@ async function deleteJournal(day) {
     $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
     await loadJournals();
     await loadOverview();
+    await syncRunStepsForSelectedDate();
   } catch (err) {
     showBanner(err.message, "error");
   }
@@ -404,32 +408,69 @@ async function removeChat(id) {
 let lastJobStatus = null;
 const JOB_STEP_ORDER = ["collect", "archive", "organize", "model", "journal"];
 
-function renderJob(job) {
+function setRunButtonBusy(running) {
   const button = $("#run-button");
+  if (!button) return;
+  button.disabled = running;
+  button.classList.toggle("is-busy", running);
+  button.setAttribute("aria-busy", running ? "true" : "false");
+}
+
+function renderJobSteps({ running = false, current = null, complete = false, error = false } = {}) {
   const steps = $("#job-steps");
+  if (!steps) return;
+  const currentIndex = JOB_STEP_ORDER.indexOf(current);
+  steps.classList.toggle("is-active", running || complete || error);
+  steps.querySelectorAll("li[data-step]").forEach((li) => {
+    const step = li.dataset.step;
+    const index = JOB_STEP_ORDER.indexOf(step);
+    li.classList.toggle("is-current", running && step === current);
+    li.classList.toggle(
+      "is-done",
+      complete || (running && currentIndex > index) || (error && currentIndex > index)
+    );
+    li.classList.toggle("is-error", error && step === current);
+  });
+}
+
+function renderJob(job) {
   if (!job) return;
-
   const running = job.status === "running";
-  if (button) {
-    button.disabled = running;
-    button.classList.toggle("is-busy", running);
-    button.setAttribute("aria-busy", running ? "true" : "false");
-  }
-
-  if (steps) {
-    steps.classList.toggle("is-active", running || job.status === "done" || job.status === "error");
-    const current = job.step || null;
-    const currentIndex = JOB_STEP_ORDER.indexOf(current);
-    steps.querySelectorAll("li[data-step]").forEach((li) => {
-      const step = li.dataset.step;
-      const index = JOB_STEP_ORDER.indexOf(step);
-      li.classList.toggle("is-current", running && step === current);
-      li.classList.toggle(
-        "is-done",
-        job.status === "done" || (running && currentIndex > index) || (job.status === "error" && currentIndex > index)
-      );
-      li.classList.toggle("is-error", job.status === "error" && step === current);
+  setRunButtonBusy(running);
+  if (running) {
+    renderJobSteps({
+      running: true,
+      current: job.step || null,
+      error: false,
+      complete: false,
     });
+    return;
+  }
+  if (job.status === "error") {
+    renderJobSteps({
+      running: false,
+      current: job.step || null,
+      error: true,
+      complete: false,
+    });
+    return;
+  }
+  // idle/done: 선택 날짜의 일지 유무에 맞춤
+  syncRunStepsForSelectedDate();
+}
+
+async function syncRunStepsForSelectedDate() {
+  if (lastJobStatus === "running") return;
+  const day = $("#run-date")?.value;
+  if (!day) {
+    renderJobSteps({ complete: false });
+    return;
+  }
+  try {
+    const data = await api(`/api/journals/${day}`);
+    renderJobSteps({ complete: Boolean(data.has_journal) });
+  } catch (_) {
+    renderJobSteps({ complete: false });
   }
 }
 
@@ -437,18 +478,24 @@ async function pollJob() {
   if (!state.authorized) return;
   const job = await api("/api/job");
   const prev = lastJobStatus;
-  renderJob(job);
   lastJobStatus = job.status;
   if (job.status === "running") {
-    setTimeout(pollJob, 700);
+    renderJob(job);
+    setTimeout(pollJob, 400);
     return;
   }
   if (prev === "running" && job.status === "done") {
     showBanner("일지 생성을 마쳤습니다.", "ok");
+    setRunButtonBusy(false);
+    await syncRunStepsForSelectedDate();
     loadJournals();
     loadOverview();
   } else if (prev === "running" && job.status === "error") {
     showBanner(job.message, "error");
+    renderJob(job);
+  } else {
+    setRunButtonBusy(false);
+    await syncRunStepsForSelectedDate();
   }
 }
 
@@ -629,6 +676,13 @@ $("#run-form").addEventListener("submit", async (event) => {
   } catch (err) {
     showBanner(err.message, "error");
   }
+});
+
+$("#run-date")?.addEventListener("change", () => {
+  syncRunStepsForSelectedDate();
+});
+$("#run-date")?.addEventListener("input", () => {
+  syncRunStepsForSelectedDate();
 });
 
 loadOverview()

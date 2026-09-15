@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -61,8 +62,8 @@ class DashboardState:
     config: AppConfig
     job: JobState = field(default_factory=JobState)
     login: LoginSession = field(default_factory=LoginSession)
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    task: asyncio.Task | None = None
+    job_lock: threading.Lock = field(default_factory=threading.Lock)
+    worker: threading.Thread | None = None
 
     def reload(self) -> AppConfig:
         self.config = load_config(self.config_path)
@@ -72,6 +73,15 @@ class DashboardState:
         storage = Storage(self.config.data_root)
         storage.ensure()
         return storage
+
+    def set_job(self, **kwargs: object) -> dict:
+        with self.job_lock:
+            self.job = JobState(**kwargs)  # type: ignore[arg-type]
+            return dict(self.job.__dict__)
+
+    def snapshot_job(self) -> dict:
+        with self.job_lock:
+            return dict(self.job.__dict__)
 
 
 class ChatBody(BaseModel):
@@ -169,7 +179,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             "today": _today(state.config),
             "chat_count": len(state.config.telegram.chats),
             "journal_count": len(storage.list_journal_dates()),
-            "job": state.job.__dict__,
+            "job": state.snapshot_job(),
             "credentials": credentials,
             "telegram": telegram,
             "login_stage": state.login.stage,
@@ -369,51 +379,79 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/job")
     async def job() -> dict:
-        return state.job.__dict__
+        return state.snapshot_job()
 
     @app.post("/api/run")
     async def run_pipeline(body: RunBody) -> dict:
-        if state.job.status == "running":
+        with state.job_lock:
+            busy = state.job.status == "running" or (
+                state.worker is not None and state.worker.is_alive()
+            )
+        if busy:
             raise HTTPException(status_code=409, detail="이미 실행 중입니다.")
         state.reload()
         day = body.date
-        state.job = JobState(
+        snapshot = state.set_job(
             status="running",
             message="파이프라인을 시작합니다…",
             step="collect",
             date=day,
+            path=None,
         )
-        state.task = asyncio.create_task(_run_pipeline(state, day))
-        return state.job.__dict__
+        worker = threading.Thread(
+            target=_run_pipeline_thread,
+            args=(state, day),
+            daemon=True,
+            name="worklog-pipeline",
+        )
+        state.worker = worker
+        worker.start()
+        return snapshot
 
     return app
 
 
-async def _run_pipeline(state: DashboardState, day: str | None) -> None:
-    async with state.lock:
-        async def progress(message: str, step: str | None = None) -> None:
-            state.job = JobState(
-                status="running",
-                message=message,
-                step=step or state.job.step,
-                date=day,
-            )
-            await asyncio.sleep(0)
+def _run_pipeline_thread(state: DashboardState, day: str | None) -> None:
+    try:
+        asyncio.run(_run_pipeline(state, day))
+    except Exception as exc:
+        logger.exception("대시보드 파이프라인 스레드 실패")
+        state.set_job(
+            status="error",
+            message=str(exc),
+            step=state.snapshot_job().get("step"),
+            date=day,
+            path=None,
+        )
 
-        try:
-            path = await Pipeline(state.config).run(day, on_progress=progress)
-            state.job = JobState(
-                status="done",
-                message="일지 생성을 마쳤습니다.",
-                step="done",
-                date=day,
-                path=path,
-            )
-        except Exception as exc:
-            logger.exception("대시보드 파이프라인 실패")
-            state.job = JobState(
-                status="error",
-                message=str(exc),
-                step=state.job.step,
-                date=day,
-            )
+
+async def _run_pipeline(state: DashboardState, day: str | None) -> None:
+    async def progress(message: str, step: str | None = None) -> None:
+        current = state.snapshot_job()
+        state.set_job(
+            status="running",
+            message=message,
+            step=step or current.get("step"),
+            date=day,
+            path=None,
+        )
+
+    try:
+        path = await Pipeline(state.config).run(day, on_progress=progress)
+        state.set_job(
+            status="done",
+            message="일지 생성을 마쳤습니다.",
+            step="done",
+            date=day,
+            path=path,
+        )
+    except Exception as exc:
+        logger.exception("대시보드 파이프라인 실패")
+        current = state.snapshot_job()
+        state.set_job(
+            status="error",
+            message=str(exc),
+            step=current.get("step"),
+            date=day,
+            path=None,
+        )

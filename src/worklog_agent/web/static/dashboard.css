@@ -791,7 +791,19 @@ button[type="submit"]:disabled,
 
 .job-steps li.is-current::before {
   background: var(--accent-hover);
-  box-shadow: 0 0 0 4px rgba(29, 78, 216, 0.15);
+  animation: job-dot-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes job-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(29, 78, 216, 0.35);
+    opacity: 0.7;
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(29, 78, 216, 0.12);
+    opacity: 1;
+  }
 }
 
 .job-steps li.is-done {
