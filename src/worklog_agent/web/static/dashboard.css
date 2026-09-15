@@ -359,6 +359,15 @@ main {
   align-items: stretch;
 }
 
+.journal-browse {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.journal-calendar-panel,
 .journal-list-panel,
 .journal-detail-panel {
   display: flex;
@@ -367,24 +376,21 @@ main {
   overflow: hidden;
 }
 
-.journal-browse-head {
+.journal-calendar-panel {
   flex: 0 0 auto;
-  justify-content: flex-end;
-  margin-bottom: 10px;
+  min-height: 0;
+  padding: 14px;
 }
 
-.view-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
+.journal-list-panel {
+  flex: 1 1 auto;
+  min-height: 120px;
+  padding: 14px;
 }
 
-.view-toggle-btn {
-  opacity: 0.45;
-}
-
-.view-toggle-btn:hover {
-  opacity: 1;
+.journal-calendar-panel.panel,
+.journal-list-panel.panel {
+  min-height: 0;
 }
 
 .list button.link.selected {
@@ -392,7 +398,7 @@ main {
 }
 
 .journal-calendar {
-  padding: 2px 0 8px;
+  padding: 0;
 }
 
 .cal-head {
@@ -1216,7 +1222,7 @@ button[type="submit"]:disabled,
     align-items: start;
   }
   .dialogs-panel,
-  .journal-list-panel,
+  .journal-browse,
   .journal-detail-panel {
     max-height: min(60vh, 560px);
   }

@@ -1,14 +1,11 @@
 const $ = (sel) => document.querySelector(sel);
 
-const JOURNAL_MODE_KEY = "worklog.journalBrowseMode";
-
 const state = {
   view: "journals",
   dialogs: [],
   loginStage: "idle",
   authorized: false,
   journals: [],
-  journalMode: "list",
   journalSelected: null,
   calendarMonth: null,
 };
@@ -177,21 +174,6 @@ function ensureCalendarMonth() {
   state.calendarMonth = { y: now.getFullYear(), m: now.getMonth() + 1 };
 }
 
-function setJournalMode(mode) {
-  state.journalMode = mode === "calendar" ? "calendar" : "list";
-  try {
-    localStorage.setItem(JOURNAL_MODE_KEY, state.journalMode);
-  } catch (_) {
-    /* ignore */
-  }
-  $("#journal-view-list")?.classList.toggle("hidden", state.journalMode === "list");
-  $("#journal-view-calendar")?.classList.toggle("hidden", state.journalMode === "calendar");
-  $("#journal-list")?.classList.toggle("hidden", state.journalMode !== "list");
-  $("#journal-calendar")?.classList.toggle("hidden", state.journalMode !== "calendar");
-  renderJournalBrowse();
-  updateJournalScrollFade();
-}
-
 function renderJournalList() {
   const list = $("#journal-list");
   if (!list) return;
@@ -289,11 +271,8 @@ function renderJournalCalendar() {
 }
 
 function renderJournalBrowse() {
-  if (state.journalMode === "calendar") {
-    renderJournalCalendar();
-  } else {
-    renderJournalList();
-  }
+  renderJournalCalendar();
+  renderJournalList();
 }
 
 async function loadJournals(selectDay) {
@@ -314,19 +293,6 @@ async function loadJournals(selectDay) {
   if (selectDay) {
     await loadJournal(selectDay);
   }
-}
-
-function initJournalBrowseMode() {
-  let mode = "list";
-  try {
-    mode = localStorage.getItem(JOURNAL_MODE_KEY) || "list";
-  } catch (_) {
-    mode = "list";
-  }
-  setJournalMode(mode);
-  document.querySelectorAll(".view-toggle-btn").forEach((btn) => {
-    btn.addEventListener("click", () => setJournalMode(btn.dataset.mode));
-  });
 }
 
 function updateJournalScrollFade() {
@@ -817,7 +783,6 @@ $("#sidebar-logout")?.addEventListener("click", () => {
 });
 
 initSidebarToggle();
-initJournalBrowseMode();
 
 $("#refresh-dialogs").addEventListener("click", loadDialogs);
 $("#dialog-filter").addEventListener("input", (event) => renderDialogs(event.target.value));
