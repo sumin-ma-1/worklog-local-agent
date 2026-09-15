@@ -57,6 +57,9 @@ function setView(name) {
   if (name === "chats") {
     requestAnimationFrame(updateDialogScrollFade);
   }
+  if (name === "journals") {
+    requestAnimationFrame(updateJournalScrollFade);
+  }
 }
 
 function applyAuthVisibility(authorized) {
@@ -158,9 +161,16 @@ async function loadJournals(selectDay) {
   list.querySelectorAll("button[data-date]").forEach((btn) => {
     btn.addEventListener("click", () => loadJournal(btn.dataset.date));
   });
+  updateJournalScrollFade();
   if (selectDay) {
     await loadJournal(selectDay);
   }
+}
+
+function updateJournalScrollFade() {
+  updateScrollFade($("#journal-list-scroll"), $("#journal-list-wrap"));
+  updateScrollFade($("#journal-detail-scroll"), $("#journal-detail-wrap"));
+  updateScrollFade($("#journal-editor"), $("#journal-editor-wrap"));
 }
 
 function renderJournalDetail(data, { editing = false } = {}) {
@@ -173,15 +183,22 @@ function renderJournalDetail(data, { editing = false } = {}) {
   const markdown = data.markdown || "";
   const hasJournal = Boolean(data.has_journal || markdown);
   const body = editing
-    ? `<textarea id="journal-editor" class="journal-editor" spellcheck="false">${escapeHtml(markdown)}</textarea>`
-    : `<pre class="journal-body">${escapeHtml(markdown || "일지 파일이 없습니다.")}</pre>`;
+    ? `<div class="journal-editor-wrap" id="journal-editor-wrap">
+        <textarea id="journal-editor" class="journal-editor" spellcheck="false">${escapeHtml(markdown)}</textarea>
+      </div>`
+    : `<div class="list-scroll-wrap" id="journal-detail-wrap">
+        <div class="list-scroll" id="journal-detail-scroll">
+          <div class="journal-body markdown-body">${renderMarkdown(markdown)}</div>
+        </div>
+      </div>`;
   const actions = editing
     ? `
-      <button type="button" id="journal-save" class="btn-with-icon">
+      <button type="button" id="journal-save" class="icon-btn ok-icon" title="저장" aria-label="저장">
         <span class="material-symbols-outlined" aria-hidden="true">save</span>
-        저장
       </button>
-      <button type="button" id="journal-cancel" class="ghost-btn">취소</button>
+      <button type="button" id="journal-cancel" class="icon-btn" title="취소" aria-label="취소">
+        <span class="material-symbols-outlined" aria-hidden="true">undo</span>
+      </button>
     `
     : `
       <button type="button" id="journal-edit" class="icon-btn" title="수정" aria-label="수정">
@@ -197,18 +214,26 @@ function renderJournalDetail(data, { editing = false } = {}) {
       <div class="journal-actions">${actions}</div>
     </div>
     ${body}
-    <h3>첨부</h3>
-    <ul class="attach-list">${attach || `<li class="empty">첨부 없음</li>`}</ul>
+    <div class="journal-attach">
+      <h3>첨부</h3>
+      <ul class="attach-list">${attach || `<li class="empty">첨부 없음</li>`}</ul>
+    </div>
   `;
+
+  $("#journal-detail-scroll")?.addEventListener("scroll", updateJournalScrollFade, { passive: true });
+  $("#journal-editor")?.addEventListener("scroll", updateJournalScrollFade, { passive: true });
 
   if (editing) {
     $("#journal-save")?.addEventListener("click", () => saveJournal(data.date));
     $("#journal-cancel")?.addEventListener("click", () => loadJournal(data.date));
+    $("#journal-editor")?.addEventListener("input", updateJournalScrollFade);
     $("#journal-editor")?.focus();
+    requestAnimationFrame(updateJournalScrollFade);
     return;
   }
   $("#journal-edit")?.addEventListener("click", () => renderJournalDetail(data, { editing: true }));
   $("#journal-delete")?.addEventListener("click", () => deleteJournal(data.date));
+  updateJournalScrollFade();
 }
 
 async function loadJournal(day) {
@@ -271,12 +296,14 @@ async function loadWatched() {
   });
 }
 
-function updateDialogScrollFade() {
-  const scroll = $("#dialog-scroll");
-  const wrap = $("#dialog-scroll-wrap");
+function updateScrollFade(scroll, wrap) {
   if (!scroll || !wrap) return;
   const more = scroll.scrollTop + scroll.clientHeight < scroll.scrollHeight - 2;
   wrap.classList.toggle("has-more", more);
+}
+
+function updateDialogScrollFade() {
+  updateScrollFade($("#dialog-scroll"), $("#dialog-scroll-wrap"));
 }
 
 function renderDialogs(filter) {
@@ -374,10 +401,12 @@ async function removeChat(id) {
   }
 }
 
+let lastJobStatus = null;
+
 function renderJob(job) {
   const el = $("#job-status");
   const button = $("#run-button");
-  if (!el) return;
+  if (!el || !job) return;
   const label = {
     idle: "대기 중",
     running: "실행 중…",
@@ -386,20 +415,37 @@ function renderJob(job) {
   }[job.status] || job.status;
   el.textContent = label;
   if (button) button.disabled = job.status === "running";
-  if (job.status === "error") showBanner(job.message, "error");
-  if (job.status === "done") showBanner(job.message || "실행을 마쳤습니다.", "ok");
 }
 
 async function pollJob() {
   if (!state.authorized) return;
   const job = await api("/api/job");
+  const prev = lastJobStatus;
   renderJob(job);
+  lastJobStatus = job.status;
   if (job.status === "running") {
     setTimeout(pollJob, 1500);
-  } else if (job.status === "done") {
+    return;
+  }
+  if (prev === "running" && job.status === "done") {
+    showBanner(job.message || "실행을 마쳤습니다.", "ok");
     loadJournals();
     loadOverview();
+  } else if (prev === "running" && job.status === "error") {
+    showBanner(job.message, "error");
   }
+}
+
+function renderMarkdown(source) {
+  const text = String(source || "").trim();
+  if (!text) {
+    return `<p class="empty">일지 파일이 없습니다.</p>`;
+  }
+  if (typeof marked !== "undefined" && typeof marked.parse === "function") {
+    marked.setOptions({ breaks: true, gfm: true });
+    return marked.parse(text);
+  }
+  return `<pre class="journal-body">${escapeHtml(text)}</pre>`;
 }
 
 function escapeHtml(value) {
@@ -538,15 +584,21 @@ initSidebarToggle();
 $("#refresh-dialogs").addEventListener("click", loadDialogs);
 $("#dialog-filter").addEventListener("input", (event) => renderDialogs(event.target.value));
 $("#dialog-scroll")?.addEventListener("scroll", updateDialogScrollFade, { passive: true });
-window.addEventListener("resize", updateDialogScrollFade);
+$("#journal-list-scroll")?.addEventListener("scroll", updateJournalScrollFade, { passive: true });
+window.addEventListener("resize", () => {
+  updateDialogScrollFade();
+  updateJournalScrollFade();
+});
 
 $("#run-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    await api("/api/run", {
+    const job = await api("/api/run", {
       method: "POST",
       body: JSON.stringify({ date: $("#run-date").value || null }),
     });
+    lastJobStatus = "running";
+    renderJob(job);
     pollJob();
   } catch (err) {
     showBanner(err.message, "error");
