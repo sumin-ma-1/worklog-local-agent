@@ -71,21 +71,21 @@
       </div>
       <nav>
         <button class="nav-btn active" data-view="journals" title="일지">
-          <span class="nav-icon">일</span>
+          <span class="nav-icon material-symbols-outlined" aria-hidden="true">folder</span>
           <span class="nav-label">일지</span>
         </button>
         <button class="nav-btn" data-view="chats" title="업무방">
-          <span class="nav-icon">방</span>
+          <span class="nav-icon material-symbols-outlined" aria-hidden="true">quick_phrases</span>
           <span class="nav-label">업무방</span>
         </button>
         <button class="nav-btn" data-view="run" title="실행">
-          <span class="nav-icon">실</span>
+          <span class="nav-icon material-symbols-outlined" aria-hidden="true">code</span>
           <span class="nav-label">실행</span>
         </button>
       </nav>
       <div class="sidebar-meta" id="overview-meta"></div>
       <button type="button" id="sidebar-logout" class="nav-btn logout-btn" title="로그아웃">
-        <span class="nav-icon">나</span>
+        <span class="nav-icon material-symbols-outlined" aria-hidden="true">logout</span>
         <span class="nav-label">로그아웃</span>
       </button>
     </aside>
@@ -120,14 +120,20 @@
             <h3>수집 대상</h3>
             <form id="add-chat-form" class="inline-form">
               <input id="chat-id-input" name="id" placeholder="-1001234567890" autocomplete="off">
-              <button type="submit">ID 추가</button>
+              <button type="submit" class="btn-with-icon">
+                <span class="material-symbols-outlined" aria-hidden="true">add</span>
+                ID 추가
+              </button>
             </form>
             <ul id="watched-list" class="list"></ul>
           </div>
           <div class="panel">
             <div class="row-head">
-              <h3>Telethon 대화 목록</h3>
-              <button type="button" id="refresh-dialogs">다시 불러오기</button>
+              <h3>참여 대화 목록</h3>
+              <button type="button" id="refresh-dialogs" class="btn-with-icon">
+                <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                다시 불러오기
+              </button>
             </div>
             <input id="dialog-filter" placeholder="제목 또는 ID 검색" autocomplete="off">
             <ul id="dialog-list" class="list"></ul>
@@ -148,7 +154,10 @@
               날짜
               <input type="date" id="run-date" name="date" value="{{ today }}">
             </label>
-            <button type="submit" id="run-button">이 날짜로 실행</button>
+            <button type="submit" id="run-button" class="btn-with-icon">
+              <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+              이 날짜로 실행
+            </button>
           </form>
           <p id="job-status" class="job-status">대기 중</p>
         </div>

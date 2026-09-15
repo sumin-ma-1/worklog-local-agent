@@ -211,7 +211,7 @@ function renderDialogs(filter) {
     .map((item) => {
       const action = item.watched
         ? `<button class="danger" data-id="${item.id}">삭제</button>`
-        : `<button class="link" data-add="${item.id}">추가</button>`;
+        : `<button class="link btn-with-icon" data-add="${item.id}" title="추가" aria-label="추가"><span class="material-symbols-outlined" aria-hidden="true">add</span></button>`;
       return `
         <li>
           <div>
