@@ -858,19 +858,15 @@ button[type="submit"]:disabled,
 
 .toast-icon {
   flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.2);
   color: #fff;
 }
 
 .toast-icon .material-symbols-outlined {
-  font-size: 18px;
-  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 20;
+  font-size: 22px;
+  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24;
   line-height: 1;
 }
 

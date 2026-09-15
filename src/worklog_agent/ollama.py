@@ -52,6 +52,28 @@ def _model_installed(wanted: str, installed: list[str]) -> str | None:
     return None
 
 
+async def list_running_model_names(config: AppConfig) -> list[str]:
+    url = f"{_host(config)}/api/ps"
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+    except httpx.HTTPError:
+        return []
+    payload = response.json()
+    models = payload.get("models") or []
+    names: list[str] = []
+    for item in models:
+        name = item.get("name") or item.get("model")
+        if name:
+            names.append(str(name))
+    return names
+
+
+def _model_already_loaded(wanted: str, running: list[str]) -> bool:
+    return _model_installed(wanted, running) is not None
+
+
 async def ensure_model(config: AppConfig) -> str:
     wanted = config.journal.ollama.model
     installed = await list_model_names(config)
@@ -68,8 +90,13 @@ async def ensure_model(config: AppConfig) -> str:
 
 
 async def warmup_model(config: AppConfig, model: str | None = None) -> str:
-    """모델이 설치돼 있는지 확인하고, 메모리에 올리기 위해 짧은 호출을 한 번 합니다."""
+    """설치 여부를 확인하고, 메모리에 없으면 짧은 호출로 올립니다."""
     resolved = model or await ensure_model(config)
+    running = await list_running_model_names(config)
+    if _model_already_loaded(resolved, running):
+        logger.info("Ollama 모델 이미 로드됨: %s", resolved)
+        return resolved
+
     url = f"{_host(config)}/api/chat"
     body: dict[str, Any] = {
         "model": resolved,

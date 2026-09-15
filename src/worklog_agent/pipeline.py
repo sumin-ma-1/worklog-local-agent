@@ -8,7 +8,11 @@ from worklog_agent.archive import archive_pending
 from worklog_agent.collect import collect_all
 from worklog_agent.config import AppConfig
 from worklog_agent.journal import generate_journal
-from worklog_agent.ollama import warmup_model
+from worklog_agent.ollama import (
+    _model_already_loaded,
+    list_running_model_names,
+    warmup_model,
+)
 from worklog_agent.organize import organize_day, target_day
 from worklog_agent.storage import Storage
 
@@ -69,7 +73,11 @@ class Pipeline:
         await emit_progress(on_progress, f"{resolved} · 날짜별 정리 중", "organize")
         bundle = self.organize(resolved)
         model_name = self.config.journal.ollama.model
-        await emit_progress(on_progress, f"모델 로드 중: {model_name}", "model")
+        running = await list_running_model_names(self.config)
+        if _model_already_loaded(model_name, running):
+            await emit_progress(on_progress, f"모델 확인: {model_name} (이미 로드됨)", "model")
+        else:
+            await emit_progress(on_progress, f"모델 로드 중: {model_name}", "model")
         model = await warmup_model(self.config)
         await emit_progress(on_progress, f"{resolved} · 일지 생성 중 ({model})", "journal")
         markdown = await generate_journal(bundle, self.config, model=model)

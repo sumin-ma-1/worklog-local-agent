@@ -23,7 +23,7 @@ function showBanner(message, kind) {
   }
   const icon =
     kind === "ok"
-      ? `<span class="toast-icon" aria-hidden="true"><span class="material-symbols-outlined">check</span></span>`
+      ? `<span class="toast-icon" aria-hidden="true"><span class="material-symbols-outlined">task_alt</span></span>`
       : "";
   el.innerHTML = `${icon}<span class="toast-text">${escapeHtml(message)}</span>`;
   el.className = `toast show ${kind || "info"}${icon ? " has-icon" : ""}`;
