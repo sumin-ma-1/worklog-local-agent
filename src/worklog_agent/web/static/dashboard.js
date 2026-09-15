@@ -18,16 +18,20 @@ function showBanner(message, kind) {
   }
   if (!message) {
     el.className = "toast hidden";
-    el.textContent = "";
+    el.innerHTML = "";
     return;
   }
-  el.textContent = message;
-  el.className = `toast show ${kind || "info"}`;
+  const icon =
+    kind === "ok"
+      ? `<span class="toast-icon" aria-hidden="true"><span class="material-symbols-outlined">check</span></span>`
+      : "";
+  el.innerHTML = `${icon}<span class="toast-text">${escapeHtml(message)}</span>`;
+  el.className = `toast show ${kind || "info"}${icon ? " has-icon" : ""}`;
   toastTimer = setTimeout(() => {
     el.classList.remove("show");
     toastTimer = setTimeout(() => {
       el.className = "toast hidden";
-      el.textContent = "";
+      el.innerHTML = "";
       toastTimer = null;
     }, 200);
   }, kind === "error" ? 3200 : 2200);
@@ -156,7 +160,7 @@ async function loadJournals(selectDay) {
       <li>
         <button class="link" data-date="${item.date}">
           ${item.date}
-          <span class="meta">첨부 ${item.attachments} · ${item.has_journal ? "일지" : "정리본만"}</span>
+          <span class="meta">첨부 ${item.attachments}</span>
         </button>
       </li>`
     )

@@ -164,7 +164,8 @@ body:not(.login-mode) .login-screen {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--sidebar-text);
+  color: var(--sidebar-muted);
+  opacity: 0.65;
   cursor: pointer;
   font: inherit;
   line-height: 1;
@@ -172,11 +173,13 @@ body:not(.login-mode) .login-screen {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: color 0.15s ease, opacity 0.15s ease;
 }
 
 .sidebar-toggle:hover {
   background: transparent;
   color: #ffffff;
+  opacity: 1;
 }
 
 .sidebar-toggle .material-symbols-outlined {
@@ -843,6 +846,36 @@ button[type="submit"]:disabled,
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.toast.has-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.toast-icon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.toast-icon .material-symbols-outlined {
+  font-size: 18px;
+  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 20;
+  line-height: 1;
+}
+
+.toast-text {
+  min-width: 0;
 }
 
 .toast.show {
