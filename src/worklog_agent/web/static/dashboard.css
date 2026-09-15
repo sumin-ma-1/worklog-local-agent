@@ -135,6 +135,18 @@ body:not(.login-mode) .login-screen {
 .sidebar-brand {
   min-width: 0;
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-logo {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
 }
 
 .sidebar h1 {
@@ -253,15 +265,24 @@ nav { display: grid; gap: 8px; }
   margin-bottom: 16px;
 }
 
-.app-shell.sidebar-collapsed .sidebar-brand,
+.app-shell.sidebar-collapsed .sidebar-brand {
+  display: flex;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.app-shell.sidebar-collapsed .brand-logo {
+  cursor: pointer;
+}
+
+.app-shell.sidebar-collapsed .sidebar-brand h1,
 .app-shell.sidebar-collapsed .sidebar-meta,
 .app-shell.sidebar-collapsed .nav-label {
   display: none;
 }
 
 .app-shell.sidebar-collapsed .sidebar-toggle {
-  width: 40px;
-  height: 40px;
+  display: none;
 }
 
 .app-shell.sidebar-collapsed nav {

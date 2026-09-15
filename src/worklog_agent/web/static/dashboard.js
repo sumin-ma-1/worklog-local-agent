@@ -461,11 +461,16 @@ const SIDEBAR_KEY = "worklog.sidebarCollapsed";
 function applySidebarCollapsed(collapsed) {
   const shell = $("#app-shell");
   const toggle = $("#sidebar-toggle");
+  const logo = $(".brand-logo");
   if (!shell) return;
   shell.classList.toggle("sidebar-collapsed", Boolean(collapsed));
   if (toggle) {
     toggle.setAttribute("aria-label", collapsed ? "사이드바 펼치기" : "사이드바 접기");
     toggle.title = collapsed ? "사이드바 펼치기" : "사이드바 접기";
+  }
+  if (logo) {
+    logo.title = collapsed ? "사이드바 펼치기" : "";
+    logo.style.cursor = collapsed ? "pointer" : "";
   }
   try {
     localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
@@ -485,6 +490,11 @@ function initSidebarToggle() {
   $("#sidebar-toggle")?.addEventListener("click", () => {
     const next = !$("#app-shell")?.classList.contains("sidebar-collapsed");
     applySidebarCollapsed(next);
+  });
+  $(".brand-logo")?.addEventListener("click", () => {
+    if ($("#app-shell")?.classList.contains("sidebar-collapsed")) {
+      applySidebarCollapsed(false);
+    }
   });
 }
 
