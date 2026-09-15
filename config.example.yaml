@@ -12,6 +12,7 @@ storage:
   root: data
 
 collect:
+  # lookback_days 는 사용하지 않습니다. 실행/수집 시 --date(또는 대시보드 날짜)만 반영됩니다.
   lookback_days: 7
   skip_service_messages: true
 

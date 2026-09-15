@@ -48,6 +48,7 @@ class StorageConfig(BaseModel):
 
 
 class CollectConfig(BaseModel):
+    # 더 이상 수집 범위에 쓰이지 않음. 실행 시 선택한 날짜만 수집합니다.
     lookback_days: int = 7
     skip_service_messages: bool = True
 

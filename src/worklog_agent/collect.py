@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from telethon import TelegramClient, utils
 from telethon.tl.custom.message import Message
@@ -9,6 +10,7 @@ from telethon.tl.types import Channel, Chat, User
 
 from worklog_agent.config import AppConfig
 from worklog_agent.models import MediaRef, MessageRecord
+from worklog_agent.organize import target_day
 from worklog_agent.storage import Storage, utcnow
 
 logger = logging.getLogger(__name__)
@@ -206,7 +208,8 @@ async def collect_chat(
     entity: object,
     storage: Storage,
     *,
-    lookback_days: int,
+    day: str,
+    tz_name: str,
     skip_service: bool,
 ) -> int:
     title = chat_title(entity)
@@ -215,18 +218,28 @@ async def collect_chat(
     if state.title != title:
         state.title = title
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+    tz = ZoneInfo(tz_name)
+    target = date.fromisoformat(day)
+    day_start = datetime.combine(target, datetime.min.time(), tzinfo=tz)
+    day_end = day_start + timedelta(days=1)
+    known_ids = {item.id for item in storage.read_messages(chat_id)}
     sender_cache: dict[int, str] = {}
     collected: list[MessageRecord] = []
 
-    async for message in client.iter_messages(entity):
-        if message.id <= state.last_id:
-            break
+    # offset_date 이전(더 오래된 쪽)부터 최신→과거로 조회. 선택한 날짜 구간만 수집.
+    async for message in client.iter_messages(entity, offset_date=day_end):
         msg_date = message.date
         if msg_date is not None and msg_date.tzinfo is None:
             msg_date = msg_date.replace(tzinfo=timezone.utc)
-        if state.last_id == 0 and msg_date is not None and msg_date < cutoff:
+        if msg_date is None:
+            continue
+        local_dt = msg_date.astimezone(tz)
+        if local_dt < day_start:
             break
+        if local_dt >= day_end:
+            continue
+        if message.id in known_ids:
+            continue
         if skip_service and message.action is not None and not message.message and not message.media:
             continue
         collected.append(await message_to_record(message, entity, sender_cache, chat_id))
@@ -234,18 +247,26 @@ async def collect_chat(
     collected.sort(key=lambda item: item.id)
     if collected:
         storage.append_messages(chat_id, collected)
-        state.last_id = max(state.last_id, collected[-1].id)
-        state.last_collected_at = utcnow()
-        storage.save_state(state)
+        known_ids.update(item.id for item in collected)
 
-    logger.info("%s: 새 메시지 %s개", title, len(collected))
+    if known_ids:
+        state.last_id = max(known_ids)
+    state.last_collected_at = utcnow()
+    storage.save_state(state)
+
+    logger.info("%s (%s): 새 메시지 %s개", title, day, len(collected))
     return len(collected)
 
 
-async def collect_all(config: AppConfig, storage: Storage) -> int:
+async def collect_all(
+    config: AppConfig,
+    storage: Storage,
+    day: str | None = None,
+) -> int:
     if not config.telegram.chats:
         raise RuntimeError("config.yaml 의 telegram.chats 에 채팅방을 지정하세요. `worklog-agent chats` 로 목록을 확인할 수 있습니다.")
 
+    resolved = target_day(day, config.timezone)
     storage.ensure()
     total = 0
     client = build_client(config, storage)
@@ -257,7 +278,8 @@ async def collect_all(config: AppConfig, storage: Storage) -> int:
                 client,
                 entity,
                 storage,
-                lookback_days=config.collect.lookback_days,
+                day=resolved,
+                tz_name=config.timezone,
                 skip_service=config.collect.skip_service_messages,
             )
     return total

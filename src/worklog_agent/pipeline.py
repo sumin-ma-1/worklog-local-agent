@@ -18,8 +18,8 @@ class Pipeline:
         self.storage = Storage(config.data_root)
         self.storage.ensure()
 
-    async def collect(self) -> int:
-        return await collect_all(self.config, self.storage)
+    async def collect(self, day: str | None = None) -> int:
+        return await collect_all(self.config, self.storage, day=day)
 
     async def archive(self) -> int:
         return await archive_pending(self.config, self.storage)
@@ -38,19 +38,16 @@ class Pipeline:
 
     async def journal(self, day: str | None = None) -> str:
         resolved = target_day(day, self.config.timezone)
-        try:
-            bundle = self.storage.load_daily(resolved)
-        except FileNotFoundError:
-            bundle = self.organize(resolved)
+        bundle = self.organize(resolved)
         markdown = await generate_journal(bundle, self.config)
         path = self.storage.save_journal(resolved, markdown)
         logger.info("일지 저장: %s", path)
         return str(path)
 
     async def run(self, day: str | None = None) -> str:
-        collected = await self.collect()
+        resolved = target_day(day, self.config.timezone)
+        collected = await self.collect(resolved)
         archived = await self.archive()
-        bundle = self.organize(day)
-        path = await self.journal(bundle.date)
+        path = await self.journal(resolved)
         logger.info("파이프라인 완료: 수집 %s, 첨부 %s, 일지 %s", collected, archived, path)
         return path

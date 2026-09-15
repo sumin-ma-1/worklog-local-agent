@@ -74,9 +74,12 @@ async def _chats(config: AppConfig) -> None:
 
 
 @app.command()
-def collect(ctx: typer.Context) -> None:
-    """지정한 채팅방 메시지를 수집합니다."""
-    count = asyncio.run(_pipeline(ctx).collect())
+def collect(
+    ctx: typer.Context,
+    date: str | None = typer.Option(None, "--date", help="YYYY-MM-DD, 기본값 오늘"),
+) -> None:
+    """지정한 날짜의 채팅방 메시지를 수집합니다."""
+    count = asyncio.run(_pipeline(ctx).collect(date))
     typer.echo(f"새 메시지 {count}개 수집")
 
 
