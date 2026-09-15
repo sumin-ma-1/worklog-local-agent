@@ -367,6 +367,114 @@ main {
   overflow: hidden;
 }
 
+.journal-browse-head {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.view-toggle-btn {
+  opacity: 0.45;
+}
+
+.view-toggle-btn:hover {
+  opacity: 1;
+}
+
+.list button.link.selected {
+  color: var(--accent);
+}
+
+.journal-calendar {
+  padding: 2px 0 8px;
+}
+
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.cal-cell.empty {
+  min-height: 40px;
+}
+
+.cal-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 4px 0 6px;
+  font: inherit;
+}
+
+.cal-day:hover {
+  background: rgba(30, 58, 138, 0.08);
+}
+
+.cal-day.is-today .cal-num {
+  font-weight: 700;
+}
+
+.cal-day.is-selected {
+  background: rgba(30, 58, 138, 0.12);
+  color: var(--accent);
+}
+
+.cal-day.has-entry .cal-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.cal-day.has-journal .cal-dot {
+  background: var(--accent);
+}
+
+.cal-num {
+  font-size: 13px;
+  line-height: 1;
+}
+
 .journal-detail-panel > .row-head {
   flex: 0 0 auto;
   justify-content: space-between;

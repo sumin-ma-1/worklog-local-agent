@@ -1,10 +1,16 @@
 const $ = (sel) => document.querySelector(sel);
 
+const JOURNAL_MODE_KEY = "worklog.journalBrowseMode";
+
 const state = {
   view: "journals",
   dialogs: [],
   loginStage: "idle",
   authorized: false,
+  journals: [],
+  journalMode: "list",
+  journalSelected: null,
+  calendarMonth: null,
 };
 
 let toastTimer = null;
@@ -145,20 +151,59 @@ async function loadOverview() {
   renderJob(data.job);
 }
 
-async function loadJournals(selectDay) {
-  if (!state.authorized) return;
-  const data = await api("/api/journals");
-  const list = $("#journal-list");
-  if (!data.journals.length) {
-    list.innerHTML = `<li class="empty">아직 생성된 일지가 없습니다.</li>`;
-    $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
+function parseDay(day) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day || "");
+  if (!match) return null;
+  return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) };
+}
+
+function monthKey(y, m) {
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+
+function ensureCalendarMonth() {
+  if (state.calendarMonth) return;
+  const selected = parseDay(state.journalSelected);
+  if (selected) {
+    state.calendarMonth = { y: selected.y, m: selected.m };
     return;
   }
-  list.innerHTML = data.journals
+  const first = parseDay(state.journals[0]?.date);
+  if (first) {
+    state.calendarMonth = { y: first.y, m: first.m };
+    return;
+  }
+  const now = new Date();
+  state.calendarMonth = { y: now.getFullYear(), m: now.getMonth() + 1 };
+}
+
+function setJournalMode(mode) {
+  state.journalMode = mode === "calendar" ? "calendar" : "list";
+  try {
+    localStorage.setItem(JOURNAL_MODE_KEY, state.journalMode);
+  } catch (_) {
+    /* ignore */
+  }
+  $("#journal-view-list")?.classList.toggle("hidden", state.journalMode === "list");
+  $("#journal-view-calendar")?.classList.toggle("hidden", state.journalMode === "calendar");
+  $("#journal-list")?.classList.toggle("hidden", state.journalMode !== "list");
+  $("#journal-calendar")?.classList.toggle("hidden", state.journalMode !== "calendar");
+  renderJournalBrowse();
+  updateJournalScrollFade();
+}
+
+function renderJournalList() {
+  const list = $("#journal-list");
+  if (!list) return;
+  if (!state.journals.length) {
+    list.innerHTML = `<li class="empty">아직 생성된 일지가 없습니다.</li>`;
+    return;
+  }
+  list.innerHTML = state.journals
     .map(
       (item) => `
       <li>
-        <button class="link" data-date="${item.date}">
+        <button class="link${item.date === state.journalSelected ? " selected" : ""}" data-date="${item.date}">
           ${item.date}
           <span class="meta">첨부 ${item.attachments}</span>
         </button>
@@ -168,10 +213,120 @@ async function loadJournals(selectDay) {
   list.querySelectorAll("button[data-date]").forEach((btn) => {
     btn.addEventListener("click", () => loadJournal(btn.dataset.date));
   });
+}
+
+function renderJournalCalendar() {
+  const root = $("#journal-calendar");
+  if (!root) return;
+  ensureCalendarMonth();
+  const { y, m } = state.calendarMonth;
+  const firstWeekday = new Date(y, m - 1, 1).getDay();
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const byDate = new Map(state.journals.map((item) => [item.date, item]));
+  const weekdayLabels = ["일", "월", "화", "수", "목", "금", "토"];
+
+  let cells = "";
+  for (let i = 0; i < firstWeekday; i += 1) {
+    cells += `<div class="cal-cell empty" aria-hidden="true"></div>`;
+  }
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const key = `${monthKey(y, m)}-${String(day).padStart(2, "0")}`;
+    const item = byDate.get(key);
+    const classes = ["cal-day"];
+    if (item) classes.push("has-entry");
+    if (item?.has_journal) classes.push("has-journal");
+    if (key === todayKey) classes.push("is-today");
+    if (key === state.journalSelected) classes.push("is-selected");
+    const title = item
+      ? `${key} · 첨부 ${item.attachments}`
+      : key;
+    cells += `
+      <button type="button" class="${classes.join(" ")}" data-date="${key}" title="${title}" aria-label="${title}">
+        <span class="cal-num">${day}</span>
+        ${item ? `<span class="cal-dot" aria-hidden="true"></span>` : ""}
+      </button>`;
+  }
+
+  root.innerHTML = `
+    <div class="cal-head">
+      <button type="button" class="icon-btn" id="cal-prev" title="이전 달" aria-label="이전 달">
+        <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+      </button>
+      <div class="cal-title">${y}년 ${m}월</div>
+      <button type="button" class="icon-btn" id="cal-next" title="다음 달" aria-label="다음 달">
+        <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+      </button>
+    </div>
+    <div class="cal-weekdays">${weekdayLabels.map((label) => `<span>${label}</span>`).join("")}</div>
+    <div class="cal-grid">${cells}</div>
+  `;
+
+  $("#cal-prev")?.addEventListener("click", () => {
+    let { y: cy, m: cm } = state.calendarMonth;
+    cm -= 1;
+    if (cm < 1) {
+      cm = 12;
+      cy -= 1;
+    }
+    state.calendarMonth = { y: cy, m: cm };
+    renderJournalCalendar();
+  });
+  $("#cal-next")?.addEventListener("click", () => {
+    let { y: cy, m: cm } = state.calendarMonth;
+    cm += 1;
+    if (cm > 12) {
+      cm = 1;
+      cy += 1;
+    }
+    state.calendarMonth = { y: cy, m: cm };
+    renderJournalCalendar();
+  });
+  root.querySelectorAll("button.cal-day").forEach((btn) => {
+    btn.addEventListener("click", () => loadJournal(btn.dataset.date));
+  });
+}
+
+function renderJournalBrowse() {
+  if (state.journalMode === "calendar") {
+    renderJournalCalendar();
+  } else {
+    renderJournalList();
+  }
+}
+
+async function loadJournals(selectDay) {
+  if (!state.authorized) return;
+  const data = await api("/api/journals");
+  state.journals = data.journals || [];
+  if (selectDay) state.journalSelected = selectDay;
+  if (!state.journals.length) {
+    renderJournalBrowse();
+    if (!selectDay) {
+      $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
+    }
+    updateJournalScrollFade();
+    return;
+  }
+  renderJournalBrowse();
   updateJournalScrollFade();
   if (selectDay) {
     await loadJournal(selectDay);
   }
+}
+
+function initJournalBrowseMode() {
+  let mode = "list";
+  try {
+    mode = localStorage.getItem(JOURNAL_MODE_KEY) || "list";
+  } catch (_) {
+    mode = "list";
+  }
+  setJournalMode(mode);
+  document.querySelectorAll(".view-toggle-btn").forEach((btn) => {
+    btn.addEventListener("click", () => setJournalMode(btn.dataset.mode));
+  });
 }
 
 function updateJournalScrollFade() {
@@ -244,6 +399,10 @@ function renderJournalDetail(data, { editing = false } = {}) {
 }
 
 async function loadJournal(day) {
+  state.journalSelected = day;
+  const parsed = parseDay(day);
+  if (parsed) state.calendarMonth = { y: parsed.y, m: parsed.m };
+  renderJournalBrowse();
   const data = await api(`/api/journals/${day}`);
   renderJournalDetail(data);
 }
@@ -269,6 +428,7 @@ async function deleteJournal(day) {
   try {
     await api(`/api/journals/${day}`, { method: "DELETE" });
     showBanner(`${day} 일지를 삭제했습니다.`, "ok");
+    state.journalSelected = null;
     $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
     await loadJournals();
     await loadOverview();
@@ -657,6 +817,7 @@ $("#sidebar-logout")?.addEventListener("click", () => {
 });
 
 initSidebarToggle();
+initJournalBrowseMode();
 
 $("#refresh-dialogs").addEventListener("click", loadDialogs);
 $("#dialog-filter").addEventListener("input", (event) => renderDialogs(event.target.value));

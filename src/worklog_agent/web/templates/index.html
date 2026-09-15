@@ -93,9 +93,20 @@
       <section id="view-journals" class="view">
         <div class="split">
           <div class="panel journal-list-panel">
+            <div class="row-head journal-browse-head">
+              <div class="view-toggle" role="group" aria-label="일지 보기 방식">
+                <button type="button" id="journal-view-list" class="icon-btn view-toggle-btn hidden" data-mode="list" title="목록" aria-label="목록으로 보기">
+                  <span class="material-symbols-outlined" aria-hidden="true">view_list</span>
+                </button>
+                <button type="button" id="journal-view-calendar" class="icon-btn view-toggle-btn" data-mode="calendar" title="달력" aria-label="달력으로 보기">
+                  <span class="material-symbols-outlined" aria-hidden="true">calendar_month</span>
+                </button>
+              </div>
+            </div>
             <div class="list-scroll-wrap" id="journal-list-wrap">
               <div class="list-scroll" id="journal-list-scroll">
                 <ul id="journal-list" class="list"></ul>
+                <div id="journal-calendar" class="journal-calendar hidden" aria-label="일지 달력"></div>
               </div>
             </div>
           </div>
