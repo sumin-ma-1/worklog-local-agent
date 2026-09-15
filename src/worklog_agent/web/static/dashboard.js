@@ -135,12 +135,13 @@ async function loadOverview() {
   renderJob(data.job);
 }
 
-async function loadJournals() {
+async function loadJournals(selectDay) {
   if (!state.authorized) return;
   const data = await api("/api/journals");
   const list = $("#journal-list");
   if (!data.journals.length) {
     list.innerHTML = `<li class="empty">아직 생성된 일지가 없습니다.</li>`;
+    $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
     return;
   }
   list.innerHTML = data.journals
@@ -157,22 +158,91 @@ async function loadJournals() {
   list.querySelectorAll("button[data-date]").forEach((btn) => {
     btn.addEventListener("click", () => loadJournal(btn.dataset.date));
   });
+  if (selectDay) {
+    await loadJournal(selectDay);
+  }
 }
 
-async function loadJournal(day) {
-  const data = await api(`/api/journals/${day}`);
+function renderJournalDetail(data, { editing = false } = {}) {
   const attach = (data.attachments || [])
     .map(
       (file) =>
         `<li><a href="/api/attachments/file?path=${encodeURIComponent(file.relative)}" target="_blank" rel="noreferrer">${escapeHtml(file.name)}</a></li>`
     )
     .join("");
+  const markdown = data.markdown || "";
+  const hasJournal = Boolean(data.has_journal || markdown);
+  const body = editing
+    ? `<textarea id="journal-editor" class="journal-editor" spellcheck="false">${escapeHtml(markdown)}</textarea>`
+    : `<pre class="journal-body">${escapeHtml(markdown || "일지 파일이 없습니다.")}</pre>`;
+  const actions = editing
+    ? `
+      <button type="button" id="journal-save" class="btn-with-icon">
+        <span class="material-symbols-outlined" aria-hidden="true">save</span>
+        저장
+      </button>
+      <button type="button" id="journal-cancel" class="ghost-btn">취소</button>
+    `
+    : `
+      <button type="button" id="journal-edit" class="icon-btn" title="수정" aria-label="수정">
+        <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+      </button>
+      <button type="button" id="journal-delete" class="icon-btn danger-icon" title="삭제" aria-label="삭제" ${hasJournal ? "" : "disabled"}>
+        <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+      </button>
+    `;
   $("#journal-detail").innerHTML = `
-    <h3>${escapeHtml(data.date)}</h3>
-    <pre class="journal-body">${escapeHtml(data.markdown || "일지 파일이 없습니다.")}</pre>
+    <div class="row-head">
+      <h3>${escapeHtml(data.date)}</h3>
+      <div class="journal-actions">${actions}</div>
+    </div>
+    ${body}
     <h3>첨부</h3>
     <ul class="attach-list">${attach || `<li class="empty">첨부 없음</li>`}</ul>
   `;
+
+  if (editing) {
+    $("#journal-save")?.addEventListener("click", () => saveJournal(data.date));
+    $("#journal-cancel")?.addEventListener("click", () => loadJournal(data.date));
+    $("#journal-editor")?.focus();
+    return;
+  }
+  $("#journal-edit")?.addEventListener("click", () => renderJournalDetail(data, { editing: true }));
+  $("#journal-delete")?.addEventListener("click", () => deleteJournal(data.date));
+}
+
+async function loadJournal(day) {
+  const data = await api(`/api/journals/${day}`);
+  renderJournalDetail(data);
+}
+
+async function saveJournal(day) {
+  const editor = $("#journal-editor");
+  if (!editor) return;
+  try {
+    await api(`/api/journals/${day}`, {
+      method: "PUT",
+      body: JSON.stringify({ markdown: editor.value }),
+    });
+    showBanner(`${day} 일지를 저장했습니다.`, "ok");
+    await loadJournals(day);
+    await loadOverview();
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+}
+
+async function deleteJournal(day) {
+  if (!window.confirm(`${day} 일지를 삭제할까요?`)) return;
+  try {
+    await api(`/api/journals/${day}`, { method: "DELETE" });
+    showBanner(`${day} 일지를 삭제했습니다.`, "ok");
+    $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
+    await loadJournals();
+    await loadOverview();
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
 }
 
 async function loadWatched() {

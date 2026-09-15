@@ -478,6 +478,19 @@ main {
   opacity: 1;
 }
 
+.icon-btn.danger-icon {
+  color: var(--danger);
+}
+
+.icon-btn.danger-icon:hover {
+  color: #991b1b;
+}
+
+.icon-btn:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
 .icon-btn .material-symbols-outlined {
   font-size: 18px;
   font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
@@ -623,10 +636,36 @@ button[type="submit"]:disabled,
 .toast.error { background: rgba(185, 28, 28, 0.95); }
 .toast.info { background: rgba(30, 58, 138, 0.95); }
 
+.journal-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .journal-body {
   white-space: pre-wrap;
   font-family: inherit;
   margin: 0 0 20px;
+}
+
+.journal-editor {
+  display: block;
+  width: 100%;
+  min-height: 360px;
+  margin: 0 0 20px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.journal-editor:focus {
+  outline: 2px solid #93c5fd;
+  border-color: #60a5fa;
 }
 
 .attach-list a { color: var(--accent-hover); }

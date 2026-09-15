@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +37,13 @@ from worklog_agent.telegram_auth import (
 
 logger = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).parent
+_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _require_day(day: str) -> str:
+    if not _DAY_RE.fullmatch(day):
+        raise HTTPException(status_code=400, detail="날짜 형식이 올바르지 않습니다. YYYY-MM-DD")
+    return day
 
 
 @dataclass
@@ -68,6 +76,10 @@ class DashboardState:
 class ChatBody(BaseModel):
     id: str | int
     title: str | None = None
+
+
+class JournalBody(BaseModel):
+    markdown: str
 
 
 class RunBody(BaseModel):
@@ -306,19 +318,43 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/journals/{day}")
     async def journal_detail(day: str) -> dict:
+        day = _require_day(day)
         storage = state.storage()
         markdown = ""
         daily = None
-        if storage.journal_path(day).exists():
+        has_journal = storage.journal_path(day).exists()
+        if has_journal:
             markdown = storage.read_journal(day)
         if storage.daily_path(day).exists():
             daily = storage.load_daily(day).model_dump(mode="json")
         return {
             "date": day,
             "markdown": markdown,
+            "has_journal": has_journal,
             "daily": daily,
             "attachments": storage.list_attachments(day),
         }
+
+    @app.put("/api/journals/{day}")
+    async def update_journal(day: str, body: JournalBody) -> dict:
+        day = _require_day(day)
+        storage = state.storage()
+        path = storage.save_journal(day, body.markdown)
+        return {
+            "date": day,
+            "markdown": storage.read_journal(day),
+            "has_journal": True,
+            "path": str(path),
+            "attachments": storage.list_attachments(day),
+        }
+
+    @app.delete("/api/journals/{day}")
+    async def delete_journal(day: str) -> dict:
+        day = _require_day(day)
+        storage = state.storage()
+        if not storage.delete_journal(day):
+            raise HTTPException(status_code=404, detail="삭제할 일지가 없습니다.")
+        return {"date": day, "deleted": True}
 
     @app.get("/api/attachments/file")
     async def attachment_file(path: str = Query(..., min_length=1)) -> FileResponse:

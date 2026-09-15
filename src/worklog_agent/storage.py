@@ -142,6 +142,13 @@ class Storage:
             raise FileNotFoundError(f"일지가 없습니다: {path}")
         return path.read_text(encoding="utf-8")
 
+    def delete_journal(self, day: str) -> bool:
+        path = self.journal_path(day)
+        if not path.exists():
+            return False
+        path.unlink()
+        return True
+
     def list_daily_dates(self) -> list[str]:
         if not self.daily.exists():
             return []

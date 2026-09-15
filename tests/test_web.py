@@ -110,3 +110,33 @@ def test_logout_endpoint(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["authorized"] is False
     assert "로그아웃" in response.json()["message"]
+
+
+def test_journal_update_and_delete(tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    config_path = _write_config(tmp_path / "config.yaml", data_root)
+    client = TestClient(create_app(config_path))
+
+    saved = client.put("/api/journals/2026-07-28", json={"markdown": "# 초안\n내용"})
+    assert saved.status_code == 200
+    assert saved.json()["has_journal"] is True
+    assert "초안" in saved.json()["markdown"]
+    assert (data_root / "journals" / "2026-07-28.md").is_file()
+
+    detail = client.get("/api/journals/2026-07-28")
+    assert detail.status_code == 200
+    assert detail.json()["has_journal"] is True
+
+    listed = client.get("/api/journals").json()["journals"]
+    assert any(item["date"] == "2026-07-28" and item["has_journal"] for item in listed)
+
+    deleted = client.delete("/api/journals/2026-07-28")
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] is True
+    assert not (data_root / "journals" / "2026-07-28.md").exists()
+
+    missing = client.delete("/api/journals/2026-07-28")
+    assert missing.status_code == 404
+
+    bad = client.put("/api/journals/not-a-date", json={"markdown": "x"})
+    assert bad.status_code == 400
