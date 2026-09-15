@@ -1,7 +1,7 @@
 const $ = (sel) => document.querySelector(sel);
 
 const state = {
-  view: "settings",
+  view: "journals",
   dialogs: [],
   loginStage: "idle",
   authorized: false,
@@ -47,61 +47,40 @@ async function api(path, options) {
 }
 
 function setView(name) {
-  if (!state.authorized && name !== "settings") {
-    name = "settings";
-    showBanner("텔레그램 로그인 후 이용할 수 있습니다.", "error");
-  }
+  if (!state.authorized) return;
   state.view = name;
-  document.querySelectorAll(".view").forEach((el) => el.classList.add("hidden"));
-  document.querySelectorAll(".nav-btn").forEach((btn) => {
+  document.querySelectorAll("#app-shell .view").forEach((el) => el.classList.add("hidden"));
+  document.querySelectorAll(".nav-btn[data-view]").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === name);
   });
-  $(`#view-${name}`).classList.remove("hidden");
+  $(`#view-${name}`)?.classList.remove("hidden");
 }
 
 function applyAuthVisibility(authorized) {
   state.authorized = Boolean(authorized);
   document.body.classList.toggle("login-mode", !state.authorized);
-  document.querySelectorAll(".nav-btn.auth-only").forEach((btn) => {
-    btn.classList.toggle("hidden", !state.authorized);
-  });
-  const settingsBtn = $("#nav-settings");
-  if (settingsBtn) {
-    settingsBtn.classList.toggle("hidden", !state.authorized);
-    settingsBtn.textContent = "설정";
-  }
-  const title = $("#settings-title");
-  const help = $("#settings-help");
-  if (title) title.textContent = state.authorized ? "텔레그램 설정" : "텔레그램 로그인";
-  if (help) {
-    help.innerHTML = state.authorized
-      ? `<a href="https://my.telegram.org" target="_blank" rel="noreferrer">my.telegram.org</a> 자격 증명과 로그인 상태를 관리합니다.`
-      : `<a href="https://my.telegram.org" target="_blank" rel="noreferrer">my.telegram.org</a> 에서 API ID / Hash 를 발급받아 저장한 뒤, 전화번호로 로그인하세요.`;
-  }
-  if (!state.authorized) {
-    setView("settings");
-  }
+  $("#app-shell")?.classList.toggle("hidden", !state.authorized);
+  $("#view-login")?.classList.toggle("hidden", state.authorized);
 }
 
 function renderLoginForms(stage) {
   state.loginStage = stage || "idle";
-  $("#login-code-form").classList.toggle("hidden", state.loginStage !== "code");
-  $("#login-password-form").classList.toggle("hidden", state.loginStage !== "password");
+  $("#login-form")?.classList.toggle(
+    "hidden",
+    state.loginStage === "code" || state.loginStage === "password"
+  );
+  $("#login-code-form")?.classList.toggle("hidden", state.loginStage !== "code");
+  $("#login-password-form")?.classList.toggle("hidden", state.loginStage !== "password");
 }
 
 function fillCredentials(credentials) {
   if (!credentials) return;
   if (credentials.api_id) $("#api-id-input").value = credentials.api_id;
-  if (credentials.phone) {
-    $("#login-phone-input").value = credentials.phone;
-  }
+  if (credentials.phone) $("#login-phone-input").value = credentials.phone;
   $("#api-hash-input").placeholder = credentials.has_api_hash
-    ? `저장됨 (${credentials.api_hash_masked})`
+    ? `저장됨 (${credentials.api_hash_masked}) — 변경 시에만 입력`
     : "API Hash";
-  const parts = [];
-  parts.push(credentials.ready ? "API 준비됨" : "API ID / Hash 필요");
-  parts.push(credentials.env_path);
-  $("#cred-status").textContent = parts.join(" · ");
+  $("#api-hash-input").value = "";
 }
 
 function fillTelegramStatus(telegram, stage) {
@@ -112,8 +91,26 @@ function fillTelegramStatus(telegram, stage) {
     $("#login-status").textContent = `로그인됨 · ${user.name}${user.username ? ` (@${user.username})` : ""}`;
   } else {
     $("#login-status").textContent = telegram.message || "로그인 필요";
+    renderLoginForms(stage || state.loginStage);
   }
-  renderLoginForms(stage || (telegram.authorized ? "authorized" : state.loginStage));
+}
+
+async function enterDashboard() {
+  await loadOverview();
+  setView("journals");
+  loadJournals();
+  pollJob();
+}
+
+async function doLogout() {
+  const data = await api("/api/telegram/logout", { method: "POST", body: "{}" });
+  state.dialogs = [];
+  state.loginStage = "idle";
+  applyAuthVisibility(false);
+  fillCredentials(data.credentials);
+  fillTelegramStatus({ authorized: false, user: null, message: data.message }, "idle");
+  renderLoginForms("idle");
+  showBanner(data.message, "ok");
 }
 
 async function loadOverview() {
@@ -124,19 +121,15 @@ async function loadOverview() {
   const authLabel = tg.authorized
     ? `TG ${escapeHtml(tg.user?.name || "로그인됨")}`
     : "TG 미로그인";
-  $("#overview-meta").innerHTML = `
-    <div>${data.timezone}</div>
-    <div>모델 ${escapeHtml(data.model)}</div>
-    <div>업무방 ${data.chat_count} · 일지 ${data.journal_count}</div>
-    <div>${authLabel}</div>
-  `;
+  if ($("#overview-meta")) {
+    $("#overview-meta").innerHTML = `
+      <div>${data.timezone}</div>
+      <div>모델 ${escapeHtml(data.model)}</div>
+      <div>업무방 ${data.chat_count} · 일지 ${data.journal_count}</div>
+      <div>${authLabel}</div>
+    `;
+  }
   renderJob(data.job);
-}
-
-async function loadTelegramStatus() {
-  const data = await api("/api/telegram/status");
-  fillCredentials(data.credentials);
-  fillTelegramStatus(data.telegram, data.login_stage);
 }
 
 async function loadJournals() {
@@ -243,7 +236,6 @@ async function loadDialogs() {
     const data = await api("/api/dialogs");
     state.dialogs = data.dialogs || [];
     renderDialogs($("#dialog-filter").value);
-    showBanner("");
   } catch (err) {
     state.dialogs = [];
     $("#dialog-list").innerHTML = `<li class="empty">${escapeHtml(err.message)}</li>`;
@@ -319,22 +311,15 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function onAuthorizedNavigate(view) {
-  if (view === "chats") {
-    loadWatched();
-    if (!state.dialogs.length) loadDialogs();
-  }
-  if (view === "journals") loadJournals();
-  if (view === "run") pollJob();
-  if (view === "settings") {
-    loadTelegramStatus().catch((err) => showBanner(err.message, "error"));
-  }
-}
-
-document.querySelectorAll(".nav-btn").forEach((btn) => {
+document.querySelectorAll(".nav-btn[data-view]").forEach((btn) => {
   btn.addEventListener("click", () => {
     setView(btn.dataset.view);
-    onAuthorizedNavigate(btn.dataset.view);
+    if (btn.dataset.view === "chats") {
+      loadWatched();
+      if (!state.dialogs.length) loadDialogs();
+    }
+    if (btn.dataset.view === "journals") loadJournals();
+    if (btn.dataset.view === "run") pollJob();
   });
 });
 
@@ -347,42 +332,23 @@ $("#add-chat-form").addEventListener("submit", (event) => {
   });
 });
 
-$("#credentials-form").addEventListener("submit", async (event) => {
+$("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
     const payload = {
       api_id: $("#api-id-input").value.trim() || null,
       api_hash: $("#api-hash-input").value.trim() || null,
+      phone: $("#login-phone-input").value.trim(),
     };
-    const data = await api("/api/telegram/credentials", {
+    const data = await api("/api/telegram/login/start", {
       method: "POST",
       body: JSON.stringify(payload),
     });
     $("#api-hash-input").value = "";
-    fillCredentials(data.credentials);
-    showBanner(data.message, "ok");
-    await loadOverview();
-  } catch (err) {
-    showBanner(err.message, "error");
-  }
-});
-
-$("#login-start-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  try {
-    const phone = $("#login-phone-input").value.trim();
-    const data = await api("/api/telegram/login/start", {
-      method: "POST",
-      body: JSON.stringify({ phone }),
-    });
     renderLoginForms(data.stage);
     $("#login-status").textContent = data.message;
-    showBanner(data.message, data.stage === "authorized" ? "ok" : "");
-    if (data.stage === "authorized") {
-      await loadOverview();
-      setView("journals");
-      loadJournals();
-    }
+    showBanner(data.message, data.stage === "authorized" ? "ok" : "info");
+    if (data.stage === "authorized") await enterDashboard();
   } catch (err) {
     showBanner(err.message, "error");
   }
@@ -397,13 +363,9 @@ $("#login-code-form").addEventListener("submit", async (event) => {
     });
     renderLoginForms(data.stage);
     $("#login-status").textContent = data.message;
-    showBanner(data.message, data.stage === "authorized" ? "ok" : "");
+    showBanner(data.message, data.stage === "authorized" ? "ok" : "info");
     $("#login-code-input").value = "";
-    if (data.stage === "authorized") {
-      await loadOverview();
-      setView("journals");
-      loadJournals();
-    }
+    if (data.stage === "authorized") await enterDashboard();
   } catch (err) {
     showBanner(err.message, "error");
   }
@@ -420,12 +382,24 @@ $("#login-password-form").addEventListener("submit", async (event) => {
     $("#login-status").textContent = data.message;
     showBanner(data.message, "ok");
     $("#login-password-input").value = "";
-    await loadOverview();
-    setView("journals");
-    loadJournals();
+    if (data.stage === "authorized") await enterDashboard();
   } catch (err) {
     showBanner(err.message, "error");
   }
+});
+
+async function restartLogin() {
+  state.loginStage = "idle";
+  renderLoginForms("idle");
+  $("#login-status").textContent = "API ID / Hash / 전화번호를 입력해 로그인하세요.";
+  $("#login-code-input").value = "";
+  $("#login-password-input").value = "";
+}
+
+$("#login-restart")?.addEventListener("click", restartLogin);
+$("#login-restart-password")?.addEventListener("click", restartLogin);
+$("#sidebar-logout")?.addEventListener("click", () => {
+  doLogout().catch((err) => showBanner(err.message, "error"));
 });
 
 $("#refresh-dialogs").addEventListener("click", loadDialogs);
@@ -451,7 +425,7 @@ loadOverview()
       loadJournals();
       pollJob();
     } else {
-      setView("settings");
+      renderLoginForms(state.loginStage === "authorized" ? "idle" : state.loginStage);
     }
   })
   .catch((err) => showBanner(err.message, "error"));

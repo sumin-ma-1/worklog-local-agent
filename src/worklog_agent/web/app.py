@@ -28,6 +28,7 @@ from worklog_agent.storage import Storage
 from worklog_agent.telegram_auth import (
     LoginSession,
     auth_status,
+    logout,
     start_login,
     submit_code,
     submit_password,
@@ -72,14 +73,10 @@ class RunBody(BaseModel):
     date: str | None = Field(default=None)
 
 
-class CredentialsBody(BaseModel):
+class LoginStartBody(BaseModel):
+    phone: str
     api_id: str | int | None = None
     api_hash: str | None = None
-    phone: str | None = None
-
-
-class PhoneBody(BaseModel):
-    phone: str
 
 
 class CodeBody(BaseModel):
@@ -178,29 +175,20 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             "login_stage": state.login.stage,
         }
 
-    @app.post("/api/telegram/credentials")
-    async def save_credentials(body: CredentialsBody) -> dict:
+    @app.post("/api/telegram/login/start")
+    async def login_start(body: LoginStartBody) -> dict:
         state.reload()
         try:
+            api_id = body.api_id if body.api_id not in (None, "") else state.config.env.telegram_api_id
+            api_hash = body.api_hash if body.api_hash not in (None, "") else state.config.env.telegram_api_hash
+            if not api_id or not api_hash:
+                raise ValueError("API ID / Hash 를 입력하세요.")
             state.config = save_telegram_credentials(
                 state.config,
-                api_id=body.api_id,
-                api_hash=body.api_hash,
+                api_id=api_id,
+                api_hash=api_hash,
                 phone=body.phone,
             )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {
-            "credentials": telegram_credential_summary(state.config),
-            "message": "자격 증명을 .env 에 저장했습니다.",
-        }
-
-    @app.post("/api/telegram/login/start")
-    async def login_start(body: PhoneBody) -> dict:
-        state.reload()
-        try:
-            if body.phone.strip():
-                state.config = save_telegram_credentials(state.config, phone=body.phone)
             result = await start_login(state.config, body.phone, state.login)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -229,6 +217,19 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         return result
+
+    @app.post("/api/telegram/logout")
+    async def telegram_logout() -> dict:
+        state.reload()
+        try:
+            result = await logout(state.config, state.login)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        state.reload()
+        return {
+            **result,
+            "credentials": telegram_credential_summary(state.config),
+        }
 
     @app.get("/api/chats")
     async def list_chats() -> dict:

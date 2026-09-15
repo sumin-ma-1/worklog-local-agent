@@ -27,12 +27,9 @@ html, body {
   font: 15px/1.5 "Pretendard", "Noto Sans KR", "Segoe UI", sans-serif;
 }
 
-body {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-}
+.hidden { display: none !important; }
 
-/* ---- centered login (first render) ---- */
+/* ---- centered login ---- */
 body.login-mode {
   display: flex;
   align-items: center;
@@ -44,16 +41,15 @@ body.login-mode {
     linear-gradient(180deg, #eef3fb 0%, #f7f9fc 55%, #f4f7fb 100%);
 }
 
-body.login-mode .sidebar {
-  display: none;
+body.login-mode .app-shell {
+  display: none !important;
 }
 
-body.login-mode main {
+.login-screen {
   width: min(460px, 100%);
-  padding: 0;
 }
 
-body.login-mode #view-settings {
+.login-card {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -61,45 +57,51 @@ body.login-mode #view-settings {
   box-shadow: 0 18px 50px rgba(15, 27, 45, 0.1);
 }
 
-body.login-mode .login-hero {
+.login-hero {
   text-align: center;
   margin-bottom: 20px;
 }
 
-body.login-mode .login-hero .eyebrow {
+.login-hero .eyebrow {
+  margin: 0 0 8px;
   color: var(--muted);
-  margin-bottom: 8px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
 }
 
-body.login-mode .login-hero h2 {
+.login-hero h2 {
   margin: 0 0 8px;
   font-size: 28px;
   color: var(--accent);
   letter-spacing: -0.03em;
 }
 
-body.login-mode .login-hero p {
+.login-hero p {
   margin: 0;
   color: var(--muted);
   font-size: 14px;
 }
 
-body.login-mode .settings-grid {
-  display: grid;
-  gap: 14px;
-}
-
-body.login-mode .settings-grid .panel {
-  min-height: 0;
-  box-shadow: none;
-}
-
-body.login-mode button[type="submit"] {
+.login-screen button[type="submit"],
+.login-screen .ghost-btn {
   width: 100%;
 }
 
+body:not(.login-mode) .login-screen {
+  display: none !important;
+}
+
 /* ---- dashboard shell ---- */
+.app-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
 .sidebar {
+  display: flex;
+  flex-direction: column;
   background: linear-gradient(180deg, #0b1f44 0%, #122a5c 100%);
   color: var(--sidebar-text);
   padding: 28px 22px;
@@ -151,35 +153,16 @@ nav { display: grid; gap: 8px; }
   font-size: 13px;
 }
 
-main { padding: 32px 40px 64px; }
+.logout-btn {
+  margin-top: auto;
+  color: #fecaca !important;
+}
 
-.hidden { display: none !important; }
+main { padding: 32px 40px 64px; }
 
 .page-head { margin-bottom: 20px; }
 .page-head h2 { margin: 0 0 6px; font-size: 26px; color: var(--accent); }
 .page-head p { margin: 0; color: var(--muted); }
-
-.login-hero {
-  margin-bottom: 20px;
-}
-
-.login-hero h2 {
-  margin: 0 0 6px;
-  font-size: 26px;
-  color: var(--accent);
-}
-
-.login-hero p {
-  margin: 0;
-  color: var(--muted);
-}
-
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  align-items: start;
-}
 
 .split {
   display: grid;
@@ -240,7 +223,7 @@ main { padding: 32px 40px 64px; }
   padding: 4px 8px;
 }
 
-.meta { color: var(--muted); font-size: 13px; display: block; }
+.meta { color: var(--muted); font-size: 13px; display: block; margin: 0 0 12px; }
 
 .inline-form, .stack-form, .row-head {
   display: flex;
@@ -261,18 +244,9 @@ main { padding: 32px 40px 64px; }
   font-size: 14px;
 }
 
-.stack-form .meta,
-.panel > .meta {
-  margin: 0 0 12px;
-}
+a { color: var(--accent-hover); }
 
-a {
-  color: var(--accent-hover);
-}
-
-input, button {
-  font: inherit;
-}
+input, button { font: inherit; }
 
 input[type="text"],
 input:not([type]),
@@ -320,6 +294,16 @@ button[type="submit"]:disabled,
   cursor: not-allowed;
 }
 
+.ghost-btn {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+}
+
 #dialog-filter { margin-bottom: 10px; }
 
 .empty, .job-status { color: var(--muted); }
@@ -351,17 +335,9 @@ button[type="submit"]:disabled,
   transform: translate(-50%, -50%) scale(1);
 }
 
-.toast.ok {
-  background: rgba(22, 101, 52, 0.95);
-}
-
-.toast.error {
-  background: rgba(185, 28, 28, 0.95);
-}
-
-.toast.info {
-  background: rgba(30, 58, 138, 0.95);
-}
+.toast.ok { background: rgba(22, 101, 52, 0.95); }
+.toast.error { background: rgba(185, 28, 28, 0.95); }
+.toast.info { background: rgba(30, 58, 138, 0.95); }
 
 .journal-body {
   white-space: pre-wrap;
@@ -372,7 +348,7 @@ button[type="submit"]:disabled,
 .attach-list a { color: var(--accent-hover); }
 
 @media (max-width: 900px) {
-  body:not(.login-mode) { grid-template-columns: 1fr; }
+  .app-shell { grid-template-columns: 1fr; }
   .sidebar { min-height: auto; }
-  .split, .settings-grid { grid-template-columns: 1fr; }
+  .split { grid-template-columns: 1fr; }
 }

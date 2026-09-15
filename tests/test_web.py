@@ -39,6 +39,9 @@ def test_dashboard_add_and_delete_chat(tmp_path: Path) -> None:
     home = client.get("/")
     assert home.status_code == 200
     assert "업무방" in home.text
+    assert 'data-view="settings"' not in home.text
+    assert 'id="view-login"' in home.text
+    assert 'id="nav-settings"' not in home.text
 
     added = client.post("/api/chats", json={"id": "-100111"})
     assert added.status_code == 200
@@ -64,28 +67,42 @@ def test_dialogs_mark_watched(tmp_path: Path) -> None:
     assert data["dialogs"][0]["title"] == "팀 업무방"
 
 
-def test_save_credentials_via_api(tmp_path: Path) -> None:
-    config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
-    client = TestClient(create_app(config_path))
-    response = client.post(
-        "/api/telegram/credentials",
-        json={"api_id": "999001", "api_hash": "hashvalue001", "phone": "+82100001111"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["credentials"]["ready"] is True
-    assert body["credentials"]["api_id"] == 999001
-    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
-    assert "TELEGRAM_API_ID=999001" in env_text
-
-    home = client.get("/")
-    assert "텔레그램 로그인" in home.text or "텔레그램 설정" in home.text
-    assert "로그인" in home.text
-
-
 def test_login_start_requires_credentials(tmp_path: Path) -> None:
     config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
     client = TestClient(create_app(config_path))
     response = client.post("/api/telegram/login/start", json={"phone": "+821011122233"})
-    assert response.status_code == 503
+    assert response.status_code == 400
     assert "API" in response.json()["detail"]
+
+
+def test_login_start_saves_and_requests_code(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
+    client = TestClient(create_app(config_path))
+    with patch(
+        "worklog_agent.web.app.start_login",
+        new=AsyncMock(return_value={"stage": "code", "message": "코드 전송"}),
+    ):
+        response = client.post(
+            "/api/telegram/login/start",
+            json={"api_id": "111", "api_hash": "hashhash", "phone": "+821011122233"},
+        )
+    assert response.status_code == 200
+    assert response.json()["stage"] == "code"
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "TELEGRAM_API_ID=111" in env_text
+    assert "TELEGRAM_PHONE=+821011122233" in env_text
+
+
+def test_logout_endpoint(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
+    client = TestClient(create_app(config_path))
+    with patch(
+        "worklog_agent.web.app.logout",
+        new=AsyncMock(
+            return_value={"stage": "idle", "message": "로그아웃되었습니다.", "authorized": False}
+        ),
+    ):
+        response = client.post("/api/telegram/logout")
+    assert response.status_code == 200
+    assert response.json()["authorized"] is False
+    assert "로그아웃" in response.json()["message"]

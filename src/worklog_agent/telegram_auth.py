@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
 from telethon.errors import FloodWaitError, PhoneCodeExpiredError, PhoneCodeInvalidError, SessionPasswordNeededError
 
@@ -17,6 +18,14 @@ class LoginSession:
     phone: str | None = None
     phone_code_hash: str | None = None
     stage: str = "idle"  # idle | code | password | authorized
+
+
+def _clear_session_files(storage: Storage, session_name: str) -> None:
+    base = storage.session_path(session_name)
+    for suffix in (".session", ".session-journal"):
+        path = Path(f"{base}{suffix}")
+        if path.is_file():
+            path.unlink(missing_ok=True)
 
 
 async def auth_status(config: AppConfig) -> dict[str, object]:
@@ -91,7 +100,7 @@ async def submit_code(config: AppConfig, code: str, login: LoginSession) -> dict
     if not code:
         raise ValueError("인증코드를 입력하세요.")
     if login.stage not in {"code", "password"} or not login.phone or not login.phone_code_hash:
-        raise ValueError("먼저 전화번호로 인증코드를 요청하세요.")
+        raise ValueError("먼저 로그인을 시작해 인증코드를 요청하세요.")
 
     storage = Storage(config.data_root)
     storage.ensure()
@@ -115,7 +124,7 @@ async def submit_code(config: AppConfig, code: str, login: LoginSession) -> dict
         except PhoneCodeExpiredError as exc:
             login.stage = "idle"
             login.phone_code_hash = None
-            raise ValueError("인증코드가 만료되었습니다. 다시 요청하세요.") from exc
+            raise ValueError("인증코드가 만료되었습니다. 다시 로그인하세요.") from exc
 
         me = await client.get_me()
         name = " ".join(part for part in [me.first_name, me.last_name] if part)
@@ -154,3 +163,31 @@ async def submit_password(config: AppConfig, password: str, login: LoginSession)
         }
     finally:
         await client.disconnect()
+
+
+async def logout(config: AppConfig, login: LoginSession) -> dict[str, object]:
+    storage = Storage(config.data_root)
+    storage.ensure()
+    login.stage = "idle"
+    login.phone = None
+    login.phone_code_hash = None
+
+    if config.env.telegram_api_id and config.env.telegram_api_hash:
+        client = build_client(config, storage)
+        try:
+            await client.connect()
+            if await client.is_user_authorized():
+                await client.log_out()
+            else:
+                await client.disconnect()
+        except Exception:
+            logger.exception("텔레그램 로그아웃 중 오류")
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            _clear_session_files(storage, config.telegram.session_name)
+    else:
+        _clear_session_files(storage, config.telegram.session_name)
+
+    return {"stage": "idle", "message": "로그아웃되었습니다.", "authorized": False}

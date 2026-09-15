@@ -49,7 +49,7 @@ worklog-agent run --date 2026-09-02
 ```
 
 웹 대시보드에서 일지를 보고, Telethon 업무방 ID를 추가·삭제할 수 있습니다.
-**설정** 탭에서 `TELEGRAM_API_ID` / `API_HASH` 저장과 전화번호 로그인도 가능합니다.
+로그인 화면에서 `TELEGRAM_API_ID` / `API_HASH` 와 전화번호로 한 번에 로그인할 수 있습니다.
 
 ```bash
 worklog-agent dashboard

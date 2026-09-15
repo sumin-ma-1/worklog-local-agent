@@ -9,135 +9,133 @@
 <body class="login-mode">
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
-  <aside class="sidebar" id="app-sidebar">
-    <p class="eyebrow">worklog-local-agent</p>
-    <h1>업무 일지</h1>
-    <nav>
-      <button class="nav-btn auth-only hidden" data-view="journals" data-requires-auth>일지</button>
-      <button class="nav-btn auth-only hidden" data-view="chats" data-requires-auth>업무방</button>
-      <button class="nav-btn" data-view="settings" id="nav-settings">설정</button>
-      <button class="nav-btn auth-only hidden" data-view="run" data-requires-auth>실행</button>
-    </nav>
-    <div class="sidebar-meta" id="overview-meta"></div>
-  </aside>
-
-  <main>
-    <section id="view-journals" class="view hidden">
-      <header class="page-head">
-        <div>
-          <h2>날짜별 일지</h2>
-          <p>생성된 일지와 첨부파일을 확인합니다.</p>
-        </div>
-      </header>
-      <div class="split">
-        <div class="panel">
-          <ul id="journal-list" class="list"></ul>
-        </div>
-        <div class="panel detail" id="journal-detail">
-          <p class="empty">왼쪽에서 날짜를 선택하세요.</p>
-        </div>
-      </div>
-    </section>
-
-    <section id="view-chats" class="view hidden">
-      <header class="page-head">
-        <div>
-          <h2>업무방</h2>
-          <p>Telethon으로 읽을 채팅방 ID를 추가하거나 빼습니다. 변경은 config.yaml에 바로 저장됩니다.</p>
-        </div>
-      </header>
-      <div class="split">
-        <div class="panel">
-          <h3>수집 대상</h3>
-          <form id="add-chat-form" class="inline-form">
-            <input id="chat-id-input" name="id" placeholder="-1001234567890" autocomplete="off">
-            <button type="submit">ID 추가</button>
-          </form>
-          <ul id="watched-list" class="list"></ul>
-        </div>
-        <div class="panel">
-          <div class="row-head">
-            <h3>Telethon 대화 목록</h3>
-            <button type="button" id="refresh-dialogs">다시 불러오기</button>
-          </div>
-          <input id="dialog-filter" placeholder="제목 또는 ID 검색" autocomplete="off">
-          <ul id="dialog-list" class="list"></ul>
-        </div>
-      </div>
-    </section>
-
-    <section id="view-settings" class="view">
+  <section id="view-login" class="login-screen">
+    <div class="login-card">
       <div class="login-hero">
         <p class="eyebrow">worklog-local-agent</p>
-        <h2 id="settings-title">텔레그램 로그인</h2>
-        <p id="settings-help">
+        <h2>텔레그램 로그인</h2>
+        <p>
           <a href="https://my.telegram.org" target="_blank" rel="noreferrer">my.telegram.org</a>
-          에서 API ID / Hash 를 발급받아 저장한 뒤, 전화번호로 로그인하세요.
+          의 API ID / Hash 와 전화번호로 로그인합니다.
         </p>
       </div>
-      <div class="settings-grid">
-        <div class="panel">
-          <h3>1. API 자격 증명</h3>
-          <p id="cred-status" class="meta">불러오는 중…</p>
-          <form id="credentials-form" class="stack-form">
-            <label>
-              API ID
-              <input id="api-id-input" name="api_id" inputmode="numeric" autocomplete="off" placeholder="12345678">
-            </label>
-            <label>
-              API Hash
-              <input id="api-hash-input" name="api_hash" autocomplete="off" placeholder="저장된 값은 마스킹됩니다">
-            </label>
-            <button type="submit">.env 에 저장</button>
-          </form>
-        </div>
-        <div class="panel">
-          <h3>2. 로그인</h3>
-          <p id="login-status" class="meta">상태 확인 중…</p>
-          <form id="login-start-form" class="stack-form">
-            <label>
-              전화번호
-              <input id="login-phone-input" autocomplete="tel" placeholder="+821012345678">
-            </label>
-            <button type="submit">인증코드 받기</button>
-          </form>
-          <form id="login-code-form" class="stack-form hidden">
-            <label>
-              인증코드
-              <input id="login-code-input" inputmode="numeric" autocomplete="one-time-code" placeholder="12345">
-            </label>
-            <button type="submit">코드로 로그인</button>
-          </form>
-          <form id="login-password-form" class="stack-form hidden">
-            <label>
-              2단계 인증 비밀번호
-              <input id="login-password-input" type="password" autocomplete="current-password">
-            </label>
-            <button type="submit">비밀번호로 로그인</button>
-          </form>
-        </div>
-      </div>
-    </section>
+      <p id="login-status" class="meta">상태 확인 중…</p>
 
-    <section id="view-run" class="view hidden">
-      <header class="page-head">
-        <div>
-          <h2>파이프라인</h2>
-          <p>수집 → 첨부 아카이브 → 날짜별 정리 → Ollama 일지 생성</p>
+      <form id="login-form" class="stack-form">
+        <label>
+          API ID
+          <input id="api-id-input" name="api_id" inputmode="numeric" autocomplete="off" placeholder="12345678">
+        </label>
+        <label>
+          API Hash
+          <input id="api-hash-input" name="api_hash" autocomplete="off" placeholder="저장된 값은 마스킹됩니다">
+        </label>
+        <label>
+          전화번호
+          <input id="login-phone-input" autocomplete="tel" placeholder="+821012345678">
+        </label>
+        <button type="submit" id="login-submit">로그인</button>
+      </form>
+
+      <form id="login-code-form" class="stack-form hidden">
+        <label>
+          인증코드
+          <input id="login-code-input" inputmode="numeric" autocomplete="one-time-code" placeholder="12345">
+        </label>
+        <button type="submit">코드로 로그인</button>
+        <button type="button" class="ghost-btn" id="login-restart">처음부터</button>
+      </form>
+
+      <form id="login-password-form" class="stack-form hidden">
+        <label>
+          2단계 인증 비밀번호
+          <input id="login-password-input" type="password" autocomplete="current-password">
+        </label>
+        <button type="submit">비밀번호로 로그인</button>
+        <button type="button" class="ghost-btn" id="login-restart-password">처음부터</button>
+      </form>
+    </div>
+  </section>
+
+  <div id="app-shell" class="app-shell hidden">
+    <aside class="sidebar" id="app-sidebar">
+      <p class="eyebrow">worklog-local-agent</p>
+      <h1>업무 일지</h1>
+      <nav>
+        <button class="nav-btn active" data-view="journals">일지</button>
+        <button class="nav-btn" data-view="chats">업무방</button>
+        <button class="nav-btn" data-view="run">실행</button>
+      </nav>
+      <div class="sidebar-meta" id="overview-meta"></div>
+      <button type="button" id="sidebar-logout" class="nav-btn logout-btn">로그아웃</button>
+    </aside>
+
+    <main>
+      <section id="view-journals" class="view">
+        <header class="page-head">
+          <div>
+            <h2>날짜별 일지</h2>
+            <p>생성된 일지와 첨부파일을 확인합니다.</p>
+          </div>
+        </header>
+        <div class="split">
+          <div class="panel">
+            <ul id="journal-list" class="list"></ul>
+          </div>
+          <div class="panel detail" id="journal-detail">
+            <p class="empty">왼쪽에서 날짜를 선택하세요.</p>
+          </div>
         </div>
-      </header>
-      <div class="panel narrow">
-        <form id="run-form" class="stack-form">
-          <label>
-            날짜
-            <input type="date" id="run-date" name="date" value="{{ today }}">
-          </label>
-          <button type="submit" id="run-button">이 날짜로 실행</button>
-        </form>
-        <p id="job-status" class="job-status">대기 중</p>
-      </div>
-    </section>
-  </main>
+      </section>
+
+      <section id="view-chats" class="view hidden">
+        <header class="page-head">
+          <div>
+            <h2>업무방</h2>
+            <p>Telethon으로 읽을 채팅방 ID를 추가하거나 빼습니다. 변경은 config.yaml에 바로 저장됩니다.</p>
+          </div>
+        </header>
+        <div class="split">
+          <div class="panel">
+            <h3>수집 대상</h3>
+            <form id="add-chat-form" class="inline-form">
+              <input id="chat-id-input" name="id" placeholder="-1001234567890" autocomplete="off">
+              <button type="submit">ID 추가</button>
+            </form>
+            <ul id="watched-list" class="list"></ul>
+          </div>
+          <div class="panel">
+            <div class="row-head">
+              <h3>Telethon 대화 목록</h3>
+              <button type="button" id="refresh-dialogs">다시 불러오기</button>
+            </div>
+            <input id="dialog-filter" placeholder="제목 또는 ID 검색" autocomplete="off">
+            <ul id="dialog-list" class="list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-run" class="view hidden">
+        <header class="page-head">
+          <div>
+            <h2>파이프라인</h2>
+            <p>수집 → 첨부 아카이브 → 날짜별 정리 → Ollama 일지 생성</p>
+          </div>
+        </header>
+        <div class="panel narrow">
+          <form id="run-form" class="stack-form">
+            <label>
+              날짜
+              <input type="date" id="run-date" name="date" value="{{ today }}">
+            </label>
+            <button type="submit" id="run-button">이 날짜로 실행</button>
+          </form>
+          <p id="job-status" class="job-status">대기 중</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
   <script src="/static/dashboard.js"></script>
 </body>
 </html>
