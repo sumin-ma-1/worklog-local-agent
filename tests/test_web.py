@@ -43,12 +43,14 @@ def test_dashboard_add_and_delete_chat(tmp_path: Path) -> None:
     assert 'id="view-login"' in home.text
     assert 'id="nav-settings"' not in home.text
 
-    added = client.post("/api/chats", json={"id": "-100111"})
+    added = client.post("/api/chats", json={"id": "-100111", "title": "운영팀"})
     assert added.status_code == 200
     assert added.json()["chats"][0]["id"] == -100111
+    assert added.json()["chats"][0]["title"] == "운영팀"
 
     listed = client.get("/api/chats")
     assert [row["id"] for row in listed.json()["chats"]] == [-100111]
+    assert listed.json()["chats"][0]["title"] == "운영팀"
 
     removed = client.post("/api/chats/delete", json={"id": -100111})
     assert removed.status_code == 200
@@ -65,6 +67,8 @@ def test_dialogs_mark_watched(tmp_path: Path) -> None:
         data = client.get("/api/dialogs").json()
     assert data["dialogs"][0]["watched"] is True
     assert data["dialogs"][0]["title"] == "팀 업무방"
+    watched = client.get("/api/chats").json()["chats"]
+    assert watched[0]["title"] == "팀 업무방"
 
 
 def test_login_start_requires_credentials(tmp_path: Path) -> None:

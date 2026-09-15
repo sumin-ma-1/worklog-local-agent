@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime
 from pathlib import Path
@@ -190,6 +191,52 @@ class Storage:
                 state.last_collected_at.isoformat() if state.last_collected_at else None
             ),
         }
+
+    def chat_titles_path(self) -> Path:
+        return self.root / "chat_titles.json"
+
+    def load_chat_titles(self) -> dict[str, str]:
+        path = self.chat_titles_path()
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {str(key): str(value) for key, value in data.items() if value}
+
+    def save_chat_title(self, chat_id: str | int, title: str | None) -> None:
+        text = (title or "").strip()
+        if not text or text == str(chat_id):
+            return
+        self.ensure()
+        titles = self.load_chat_titles()
+        titles[str(chat_id)] = text
+        self.chat_titles_path().write_text(
+            json.dumps(titles, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def save_chat_titles(self, items: Iterable[tuple[str | int, str]]) -> None:
+        updated = False
+        titles = self.load_chat_titles()
+        for chat_id, title in items:
+            text = (title or "").strip()
+            if not text or text == str(chat_id):
+                continue
+            key = str(chat_id)
+            if titles.get(key) != text:
+                titles[key] = text
+                updated = True
+        if not updated:
+            return
+        self.ensure()
+        self.chat_titles_path().write_text(
+            json.dumps(titles, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
 
 def utcnow() -> datetime:

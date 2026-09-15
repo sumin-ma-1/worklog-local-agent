@@ -122,21 +122,27 @@
               <input id="chat-id-input" name="id" placeholder="-1001234567890" autocomplete="off">
               <button type="submit" class="btn-with-icon">
                 <span class="material-symbols-outlined" aria-hidden="true">add</span>
-                ID 추가
+                ID로 추가
               </button>
             </form>
             <ul id="watched-list" class="list"></ul>
           </div>
-          <div class="panel">
+          <div class="panel dialogs-panel">
             <div class="row-head">
               <h3>참여 대화 목록</h3>
-              <button type="button" id="refresh-dialogs" class="btn-with-icon">
+              <button type="button" id="refresh-dialogs" class="icon-btn" title="다시 불러오기" aria-label="다시 불러오기">
                 <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
-                다시 불러오기
               </button>
             </div>
-            <input id="dialog-filter" placeholder="제목 또는 ID 검색" autocomplete="off">
-            <ul id="dialog-list" class="list"></ul>
+            <div class="search-field">
+              <input id="dialog-filter" placeholder="제목 또는 ID 검색" autocomplete="off">
+              <span class="material-symbols-outlined search-field-icon" aria-hidden="true">search</span>
+            </div>
+            <div class="list-scroll-wrap" id="dialog-scroll-wrap">
+              <div class="list-scroll" id="dialog-scroll">
+                <ul id="dialog-list" class="list"></ul>
+              </div>
+            </div>
           </div>
         </div>
       </section>

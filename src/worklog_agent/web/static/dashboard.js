@@ -54,6 +54,9 @@ function setView(name) {
     btn.classList.toggle("active", btn.dataset.view === name);
   });
   $(`#view-${name}`)?.classList.remove("hidden");
+  if (name === "chats") {
+    requestAnimationFrame(updateDialogScrollFade);
+  }
 }
 
 function applyAuthVisibility(authorized) {
@@ -187,13 +190,23 @@ async function loadWatched() {
           <strong>${escapeHtml(String(chat.title))}</strong>
           <span class="meta">${escapeHtml(String(chat.id))}</span>
         </div>
-        <button class="danger" data-id="${escapeHtml(String(chat.id))}">삭제</button>
+        <button class="danger icon-action" data-id="${escapeHtml(String(chat.id))}" title="삭제" aria-label="삭제">
+          <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+        </button>
       </li>`
     )
     .join("");
   list.querySelectorAll("button.danger").forEach((btn) => {
     btn.addEventListener("click", () => removeChat(btn.dataset.id));
   });
+}
+
+function updateDialogScrollFade() {
+  const scroll = $("#dialog-scroll");
+  const wrap = $("#dialog-scroll-wrap");
+  if (!scroll || !wrap) return;
+  const more = scroll.scrollTop + scroll.clientHeight < scroll.scrollHeight - 2;
+  wrap.classList.toggle("has-more", more);
 }
 
 function renderDialogs(filter) {
@@ -205,13 +218,14 @@ function renderDialogs(filter) {
   const list = $("#dialog-list");
   if (!rows.length) {
     list.innerHTML = `<li class="empty">표시할 대화가 없습니다.</li>`;
+    updateDialogScrollFade();
     return;
   }
   list.innerHTML = rows
     .map((item) => {
       const action = item.watched
-        ? `<button class="danger" data-id="${item.id}">삭제</button>`
-        : `<button class="link btn-with-icon" data-add="${item.id}" title="추가" aria-label="추가"><span class="material-symbols-outlined" aria-hidden="true">add</span></button>`;
+        ? `<button class="danger icon-action" data-id="${item.id}" title="삭제" aria-label="삭제"><span class="material-symbols-outlined" aria-hidden="true">delete</span></button>`
+        : `<button class="link btn-with-icon icon-action" data-add="${item.id}" title="추가" aria-label="추가"><span class="material-symbols-outlined" aria-hidden="true">add</span></button>`;
       return `
         <li>
           <div>
@@ -223,29 +237,44 @@ function renderDialogs(filter) {
     })
     .join("");
   list.querySelectorAll("[data-add]").forEach((btn) => {
-    btn.addEventListener("click", () => addChat(btn.dataset.add));
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.add;
+      const match = state.dialogs.find((item) => String(item.id) === String(id));
+      addChat(id, match?.title);
+    });
   });
   list.querySelectorAll("button.danger").forEach((btn) => {
     btn.addEventListener("click", () => removeChat(btn.dataset.id));
   });
+  updateDialogScrollFade();
 }
 
 async function loadDialogs() {
   $("#dialog-list").innerHTML = `<li class="empty">불러오는 중…</li>`;
+  updateDialogScrollFade();
   try {
     const data = await api("/api/dialogs");
     state.dialogs = data.dialogs || [];
     renderDialogs($("#dialog-filter").value);
+    await loadWatched();
   } catch (err) {
     state.dialogs = [];
     $("#dialog-list").innerHTML = `<li class="empty">${escapeHtml(err.message)}</li>`;
+    updateDialogScrollFade();
     showBanner(err.message, "error");
   }
 }
 
-async function addChat(id) {
+async function addChat(id, title) {
   try {
-    await api("/api/chats", { method: "POST", body: JSON.stringify({ id }) });
+    const known =
+      title ||
+      state.dialogs.find((item) => String(item.id) === String(id))?.title ||
+      null;
+    await api("/api/chats", {
+      method: "POST",
+      body: JSON.stringify({ id, title: known || null }),
+    });
     showBanner(`업무방 ${id} 을(를) 추가했습니다.`, "ok");
     await Promise.all([loadWatched(), loadOverview()]);
     if (state.dialogs.length) {
@@ -438,6 +467,8 @@ initSidebarToggle();
 
 $("#refresh-dialogs").addEventListener("click", loadDialogs);
 $("#dialog-filter").addEventListener("input", (event) => renderDialogs(event.target.value));
+$("#dialog-scroll")?.addEventListener("scroll", updateDialogScrollFade, { passive: true });
+window.addEventListener("resize", updateDialogScrollFade);
 
 $("#run-form").addEventListener("submit", async (event) => {
   event.preventDefault();

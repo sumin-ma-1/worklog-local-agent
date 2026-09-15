@@ -67,6 +67,7 @@ class DashboardState:
 
 class ChatBody(BaseModel):
     id: str | int
+    title: str | None = None
 
 
 class RunBody(BaseModel):
@@ -93,13 +94,15 @@ def _today(config: AppConfig) -> str:
 
 def _watched_chats(state: DashboardState) -> list[dict[str, object]]:
     storage = state.storage()
+    titles = storage.load_chat_titles()
     rows: list[dict[str, object]] = []
     for spec in state.config.telegram.chats:
         ref = normalize_chat_ref(spec)
+        key = str(ref)
         row: dict[str, object] = {
             "id": ref,
             "key": chat_ref_key(ref),
-            "title": str(ref),
+            "title": titles.get(key) or str(ref),
             "last_id": 0,
             "last_collected_at": None,
         }
@@ -107,6 +110,8 @@ def _watched_chats(state: DashboardState) -> list[dict[str, object]]:
             meta = storage.watched_chat_meta(ref)
             if meta.get("title"):
                 row["title"] = meta["title"]
+            elif titles.get(key):
+                row["title"] = titles[key]
             row["last_id"] = meta.get("last_id") or 0
             row["last_collected_at"] = meta.get("last_collected_at")
         rows.append(row)
@@ -243,6 +248,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             state.config = add_chat_ref(state.config, body.id)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if body.title:
+            state.storage().save_chat_title(normalize_chat_ref(body.id), body.title)
         return {"chats": _watched_chats(state)}
 
     @app.post("/api/chats/delete")
@@ -264,6 +271,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             rows = await load_dialogs(state.config, interactive=False)
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        storage = state.storage()
+        storage.save_chat_titles((row["id"], row["title"]) for row in rows)
         payload = []
         for row in rows:
             key = chat_ref_key(row["id"])
