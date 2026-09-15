@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "worklog: dashboard",
+      "type": "shell",
+      "command": ".venv/bin/worklog-agent dashboard",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Uvicorn running",
+          "endsPattern": "Application startup complete"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "worklog: open dashboard",
+      "type": "shell",
+      "command": "echo 'Ports 패널에서 8787 → Open in Browser, 또는 Simple Browser: http://localhost:8787'",
+      "dependsOn": ["worklog: dashboard"],
+      "problemMatcher": []
+    }
+  ]
+}

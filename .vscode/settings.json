@@ -1,0 +1,10 @@
+{
+  "remote.autoForwardPorts": true,
+  "remote.portsAttributes": {
+    "8787": {
+      "label": "Worklog Dashboard",
+      "onAutoForward": "openBrowser",
+      "protocol": "http"
+    }
+  }
+}
