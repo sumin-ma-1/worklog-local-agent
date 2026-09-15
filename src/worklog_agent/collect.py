@@ -262,6 +262,8 @@ async def collect_all(
     config: AppConfig,
     storage: Storage,
     day: str | None = None,
+    *,
+    on_progress=None,
 ) -> int:
     if not config.telegram.chats:
         raise RuntimeError("config.yaml 의 telegram.chats 에 채팅방을 지정하세요. `worklog-agent chats` 로 목록을 확인할 수 있습니다.")
@@ -269,11 +271,18 @@ async def collect_all(
     resolved = target_day(day, config.timezone)
     storage.ensure()
     total = 0
+    chats = list(config.telegram.chats)
     client = build_client(config, storage)
     async with client:
         await ensure_authorized(client, config)
-        for spec in config.telegram.chats:
+        for index, spec in enumerate(chats, start=1):
             entity = await resolve_chat(client, spec)
+            title = chat_title(entity)
+            if on_progress:
+                on_progress(
+                    f"{resolved} · 수집 중: {title} ({index}/{len(chats)})",
+                    "collect",
+                )
             total += await collect_chat(
                 client,
                 entity,

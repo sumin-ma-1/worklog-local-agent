@@ -37,7 +37,7 @@ def _local_day(record: MessageRecord, tz_name: str) -> str:
     return date.astimezone(ZoneInfo(tz_name)).date().isoformat()
 
 
-async def archive_pending(config: AppConfig, storage: Storage) -> int:
+async def archive_pending(config: AppConfig, storage: Storage, *, on_progress=None) -> int:
     storage.ensure()
     pending: list[MessageRecord] = []
     for record in storage.load_all_messages():
@@ -45,6 +45,8 @@ async def archive_pending(config: AppConfig, storage: Storage) -> int:
             pending.append(record)
     if not pending:
         logger.info("다운로드할 첨부파일이 없습니다.")
+        if on_progress:
+            on_progress("첨부 없음 — 건너뜀", "archive")
         return 0
 
     chats_by_id: dict[int, list[MessageRecord]] = {}
@@ -53,10 +55,17 @@ async def archive_pending(config: AppConfig, storage: Storage) -> int:
 
     client = build_client(config, storage)
     saved = 0
+    chat_items = list(chats_by_id.items())
     async with client:
         await ensure_authorized(client, config)
-        for chat_id, records in chats_by_id.items():
-            entity = await _resolve_entity(client, config, chat_id, records[0].chat_title)
+        for index, (chat_id, records) in enumerate(chat_items, start=1):
+            title = records[0].chat_title
+            if on_progress:
+                on_progress(
+                    f"첨부 저장 중: {title} ({index}/{len(chat_items)}, {len(records)}개)",
+                    "archive",
+                )
+            entity = await _resolve_entity(client, config, chat_id, title)
             existing = {item.id: item for item in storage.read_messages(chat_id)}
             chat_saved = 0
             for record in records:
@@ -79,7 +88,7 @@ async def archive_pending(config: AppConfig, storage: Storage) -> int:
                     chat_saved += 1
                     saved += 1
             storage.write_messages(chat_id, existing.values())
-            logger.info("%s: 첨부 %s개 저장", records[0].chat_title, chat_saved)
+            logger.info("%s: 첨부 %s개 저장", title, chat_saved)
 
     logger.info("첨부파일 %s개 아카이브 완료", saved)
     return saved

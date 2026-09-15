@@ -50,6 +50,7 @@ def _require_day(day: str) -> str:
 class JobState:
     status: str = "idle"
     message: str = ""
+    step: str | None = None
     date: str | None = None
     path: str | None = None
 
@@ -375,8 +376,14 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         if state.job.status == "running":
             raise HTTPException(status_code=409, detail="이미 실행 중입니다.")
         state.reload()
-        state.job = JobState(status="running", message="파이프라인 실행 중", date=body.date)
-        state.task = asyncio.create_task(_run_pipeline(state, body.date))
+        day = body.date
+        state.job = JobState(
+            status="running",
+            message="파이프라인을 시작합니다…",
+            step="collect",
+            date=day,
+        )
+        state.task = asyncio.create_task(_run_pipeline(state, day))
         return state.job.__dict__
 
     return app
@@ -384,14 +391,28 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
 async def _run_pipeline(state: DashboardState, day: str | None) -> None:
     async with state.lock:
+        def progress(message: str, step: str | None = None) -> None:
+            state.job = JobState(
+                status="running",
+                message=message,
+                step=step or state.job.step,
+                date=day,
+            )
+
         try:
-            path = await Pipeline(state.config).run(day)
+            path = await Pipeline(state.config).run(day, on_progress=progress)
             state.job = JobState(
                 status="done",
                 message="일지 생성을 마쳤습니다.",
+                step="done",
                 date=day,
                 path=path,
             )
         except Exception as exc:
             logger.exception("대시보드 파이프라인 실패")
-            state.job = JobState(status="error", message=str(exc), date=day)
+            state.job = JobState(
+                status="error",
+                message=str(exc),
+                step=state.job.step,
+                date=day,
+            )

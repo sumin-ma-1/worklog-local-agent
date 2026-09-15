@@ -402,19 +402,39 @@ async function removeChat(id) {
 }
 
 let lastJobStatus = null;
+const JOB_STEP_ORDER = ["collect", "archive", "organize", "model", "journal"];
 
 function renderJob(job) {
   const el = $("#job-status");
   const button = $("#run-button");
+  const steps = $("#job-steps");
   if (!el || !job) return;
+
+  const running = job.status === "running";
   const label = {
     idle: "대기 중",
-    running: "실행 중…",
-    done: job.path ? `완료: ${job.path}` : "완료",
+    running: job.message || "실행 중…",
+    done: job.message || (job.path ? `완료: ${job.path}` : "완료"),
     error: `실패: ${job.message || ""}`,
   }[job.status] || job.status;
   el.textContent = label;
-  if (button) button.disabled = job.status === "running";
+  if (button) button.disabled = running;
+
+  if (steps) {
+    steps.classList.toggle("is-active", running || job.status === "done" || job.status === "error");
+    const current = job.step || null;
+    const currentIndex = JOB_STEP_ORDER.indexOf(current);
+    steps.querySelectorAll("li[data-step]").forEach((li) => {
+      const step = li.dataset.step;
+      const index = JOB_STEP_ORDER.indexOf(step);
+      li.classList.toggle("is-current", running && step === current);
+      li.classList.toggle(
+        "is-done",
+        job.status === "done" || (running && currentIndex > index) || (job.status === "error" && currentIndex > index)
+      );
+      li.classList.toggle("is-error", job.status === "error" && step === current);
+    });
+  }
 }
 
 async function pollJob() {
@@ -424,7 +444,7 @@ async function pollJob() {
   renderJob(job);
   lastJobStatus = job.status;
   if (job.status === "running") {
-    setTimeout(pollJob, 1500);
+    setTimeout(pollJob, 700);
     return;
   }
   if (prev === "running" && job.status === "done") {

@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from worklog_agent.archive import archive_pending
 from worklog_agent.collect import collect_all
 from worklog_agent.config import AppConfig
 from worklog_agent.journal import generate_journal
+from worklog_agent.ollama import warmup_model
 from worklog_agent.organize import organize_day, target_day
 from worklog_agent.storage import Storage
 
 logger = logging.getLogger(__name__)
+
+ProgressFn = Callable[[str, str | None], None]
 
 
 class Pipeline:
@@ -18,11 +22,16 @@ class Pipeline:
         self.storage = Storage(config.data_root)
         self.storage.ensure()
 
-    async def collect(self, day: str | None = None) -> int:
-        return await collect_all(self.config, self.storage, day=day)
+    async def collect(
+        self,
+        day: str | None = None,
+        *,
+        on_progress: ProgressFn | None = None,
+    ) -> int:
+        return await collect_all(self.config, self.storage, day=day, on_progress=on_progress)
 
-    async def archive(self) -> int:
-        return await archive_pending(self.config, self.storage)
+    async def archive(self, *, on_progress: ProgressFn | None = None) -> int:
+        return await archive_pending(self.config, self.storage, on_progress=on_progress)
 
     def organize(self, day: str | None = None):
         resolved = target_day(day, self.config.timezone)
@@ -36,18 +45,40 @@ class Pipeline:
         )
         return bundle
 
-    async def journal(self, day: str | None = None) -> str:
+    async def journal(
+        self,
+        day: str | None = None,
+        *,
+        on_progress: ProgressFn | None = None,
+    ) -> str:
         resolved = target_day(day, self.config.timezone)
+        if on_progress:
+            on_progress(f"{resolved} · 날짜별 정리 중", "organize")
         bundle = self.organize(resolved)
-        markdown = await generate_journal(bundle, self.config)
+        model_name = self.config.journal.ollama.model
+        if on_progress:
+            on_progress(f"모델 로드 중: {model_name}", "model")
+        model = await warmup_model(self.config)
+        if on_progress:
+            on_progress(f"{resolved} · 일지 생성 중 ({model})", "journal")
+        markdown = await generate_journal(bundle, self.config, model=model)
         path = self.storage.save_journal(resolved, markdown)
         logger.info("일지 저장: %s", path)
         return str(path)
 
-    async def run(self, day: str | None = None) -> str:
+    async def run(
+        self,
+        day: str | None = None,
+        *,
+        on_progress: ProgressFn | None = None,
+    ) -> str:
         resolved = target_day(day, self.config.timezone)
-        collected = await self.collect(resolved)
-        archived = await self.archive()
-        path = await self.journal(resolved)
+        if on_progress:
+            on_progress(f"{resolved} · 메시지 수집 시작", "collect")
+        collected = await self.collect(resolved, on_progress=on_progress)
+        if on_progress:
+            on_progress(f"{resolved} · 첨부 저장 중", "archive")
+        archived = await self.archive(on_progress=on_progress)
+        path = await self.journal(resolved, on_progress=on_progress)
         logger.info("파이프라인 완료: 수집 %s, 첨부 %s, 일지 %s", collected, archived, path)
         return path

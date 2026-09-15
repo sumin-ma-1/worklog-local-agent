@@ -91,12 +91,6 @@
 
     <main>
       <section id="view-journals" class="view">
-        <header class="page-head">
-          <div>
-            <h2>날짜별 일지</h2>
-            <p>생성된 일지를 확인하고 수정·삭제합니다.</p>
-          </div>
-        </header>
         <div class="split">
           <div class="panel journal-list-panel">
             <div class="list-scroll-wrap" id="journal-list-wrap">
@@ -112,12 +106,6 @@
       </section>
 
       <section id="view-chats" class="view hidden">
-        <header class="page-head">
-          <div>
-            <h2>업무방</h2>
-            <p>Telethon으로 읽을 채팅방 ID를 추가하거나 빼습니다. 변경은 config.yaml에 바로 저장됩니다.</p>
-          </div>
-        </header>
         <div class="split">
           <div class="panel">
             <h3>수집 대상</h3>
@@ -151,12 +139,6 @@
       </section>
 
       <section id="view-run" class="view hidden">
-        <header class="page-head">
-          <div>
-            <h2>파이프라인</h2>
-            <p>선택한 날짜의 메시지를 수집 → 첨부 저장 → 정리 → 일지 생성</p>
-          </div>
-        </header>
         <div class="panel narrow">
           <form id="run-form" class="stack-form">
             <label>
@@ -168,7 +150,16 @@
               이 날짜로 실행
             </button>
           </form>
-          <p id="job-status" class="job-status">대기 중</p>
+          <div class="job-panel">
+            <p id="job-status" class="job-status">대기 중</p>
+            <ol id="job-steps" class="job-steps">
+              <li data-step="collect">메시지 수집</li>
+              <li data-step="archive">첨부 저장</li>
+              <li data-step="organize">날짜 정리</li>
+              <li data-step="model">모델 로드</li>
+              <li data-step="journal">일지 생성</li>
+            </ol>
+          </div>
         </div>
       </section>
     </main>

@@ -67,26 +67,61 @@ async def ensure_model(config: AppConfig) -> str:
     )
 
 
+async def warmup_model(config: AppConfig, model: str | None = None) -> str:
+    """모델이 설치돼 있는지 확인하고, 메모리에 올리기 위해 짧은 호출을 한 번 합니다."""
+    resolved = model or await ensure_model(config)
+    url = f"{_host(config)}/api/chat"
+    body: dict[str, Any] = {
+        "model": resolved,
+        "messages": [{"role": "user", "content": "."}],
+        "stream": False,
+        "keep_alive": "30m",
+        "options": {
+            "temperature": 0,
+            "num_predict": 1,
+            "num_ctx": min(2048, config.journal.ollama.num_ctx),
+        },
+    }
+    logger.info("Ollama 모델 로드: %s (%s)", resolved, _host(config))
+    try:
+        async with httpx.AsyncClient(timeout=_timeout(config)) as client:
+            response = await client.post(url, json=body)
+            response.raise_for_status()
+    except httpx.HTTPError as exc:
+        detail = ""
+        if isinstance(exc, httpx.HTTPStatusError):
+            detail = f": {exc.response.text[:500]}"
+        raise OllamaError(f"Ollama 모델 로드 실패{detail}") from exc
+    return resolved
+
+
 def _clean_content(text: str) -> str:
     return _THINK_RE.sub("", text).strip()
 
 
-async def chat(config: AppConfig, system: str, user: str) -> str:
-    model = await ensure_model(config)
+async def chat(
+    config: AppConfig,
+    system: str,
+    user: str,
+    *,
+    model: str | None = None,
+) -> str:
+    resolved = model or await ensure_model(config)
     url = f"{_host(config)}/api/chat"
     body: dict[str, Any] = {
-        "model": model,
+        "model": resolved,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
         "stream": False,
+        "keep_alive": "30m",
         "options": {
             "temperature": config.journal.temperature,
             "num_ctx": config.journal.ollama.num_ctx,
         },
     }
-    logger.info("Ollama 호출: %s (%s)", model, _host(config))
+    logger.info("Ollama 호출: %s (%s)", resolved, _host(config))
     try:
         async with httpx.AsyncClient(timeout=_timeout(config)) as client:
             response = await client.post(url, json=body)

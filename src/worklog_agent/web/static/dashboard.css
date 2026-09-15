@@ -681,6 +681,74 @@ button[type="submit"]:disabled,
 
 .empty, .job-status { color: var(--muted); }
 
+.job-panel {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.job-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  opacity: 0.55;
+}
+
+.job-steps.is-active {
+  opacity: 1;
+}
+
+.job-steps li {
+  position: relative;
+  padding: 8px 12px 8px 34px;
+  border-radius: 8px;
+  background: #f3f6fb;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.job-steps li::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: #c5d0e0;
+}
+
+.job-steps li.is-current {
+  background: #e8eefc;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.job-steps li.is-current::before {
+  background: var(--accent-hover);
+  box-shadow: 0 0 0 4px rgba(29, 78, 216, 0.15);
+}
+
+.job-steps li.is-done {
+  color: var(--ok);
+}
+
+.job-steps li.is-done::before {
+  background: var(--ok);
+}
+
+.job-steps li.is-error {
+  background: #fff1f2;
+  color: var(--danger);
+}
+
+.job-steps li.is-error::before {
+  background: var(--danger);
+}
+
 .toast {
   position: fixed;
   top: 50%;

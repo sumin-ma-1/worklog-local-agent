@@ -79,7 +79,12 @@ def render_draft(bundle: DailyBundle) -> str:
     return "\n".join(lines)
 
 
-async def generate_journal(bundle: DailyBundle, config: AppConfig) -> str:
+async def generate_journal(
+    bundle: DailyBundle,
+    config: AppConfig,
+    *,
+    model: str | None = None,
+) -> str:
     payload = bundle.to_prompt_payload()
     user_prompt = (
         f"날짜: {bundle.date} ({bundle.timezone})\n"
@@ -87,5 +92,5 @@ async def generate_journal(bundle: DailyBundle, config: AppConfig) -> str:
         f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
     )
     system = JOURNAL_SYSTEM_PROMPT.format(date=bundle.date)
-    content = await ollama_chat(config, system, user_prompt)
+    content = await ollama_chat(config, system, user_prompt, model=model)
     return content.strip() + "\n"
