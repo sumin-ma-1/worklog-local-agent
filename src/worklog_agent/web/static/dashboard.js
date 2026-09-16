@@ -101,6 +101,7 @@ function setAuthMode(mode) {
   const gotoRegister = $("#goto-register");
   const gotoLogin = $("#goto-login");
   const status = $("#login-status");
+  const hints = document.querySelectorAll(".field-hint.register-only");
   status?.classList.add("hidden");
   if (state.authMode === "register") {
     if (submit) submit.textContent = "가입하기";
@@ -108,6 +109,7 @@ function setAuthMode(mode) {
     confirmWrap?.classList.remove("hidden");
     gotoRegister?.classList.add("hidden");
     gotoLogin?.classList.remove("hidden");
+    hints.forEach((el) => el.classList.remove("hidden"));
   } else {
     if (submit) submit.textContent = "로그인";
     if (password) password.autocomplete = "current-password";
@@ -115,6 +117,7 @@ function setAuthMode(mode) {
     $("#password-confirm-input") && ($("#password-confirm-input").value = "");
     gotoRegister?.classList.remove("hidden");
     gotoLogin?.classList.add("hidden");
+    hints.forEach((el) => el.classList.add("hidden"));
   }
 }
 
