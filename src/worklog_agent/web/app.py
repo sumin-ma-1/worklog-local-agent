@@ -40,6 +40,7 @@ from worklog_agent.users import (
     delete_user_data,
     ensure_user_root,
     find_share,
+    load_user_chats,
     load_user_telegram,
     migrate_legacy_to_user,
     remove_user_chat,
@@ -532,14 +533,17 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         for user in state.accounts.list_public():
             root = user_root(state.config.data_root, user["id"])
             journal_count = 0
+            chat_count = 0
             if root.is_dir():
                 journal_count = len(Storage(root).list_journal_dates())
+                chat_count = len(load_user_chats(root))
             users.append(
                 {
                     **user,
                     "telegram_linked": telegram_linked(root, session_name),
                     "last_seen": last_seen.get(str(user["id"])),
                     "journal_count": journal_count,
+                    "chat_count": chat_count,
                 }
             )
         return {"users": users}

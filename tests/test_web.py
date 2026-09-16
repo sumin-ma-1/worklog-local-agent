@@ -234,6 +234,7 @@ def test_admin_users_api(tmp_path: Path) -> None:
     member = next(item for item in users if item["username"] == "member1")
     assert member["telegram_linked"] is True
     assert member["journal_count"] == 0
+    assert member["chat_count"] == 0
     assert member["last_seen"]
 
     overview = admin.get("/api/overview").json()
@@ -241,10 +242,12 @@ def test_admin_users_api(tmp_path: Path) -> None:
     assert other.get("/api/overview").json()["is_admin"] is False
 
     assert other.put("/api/journals/2026-03-01", json={"markdown": "# m"}).status_code == 200
+    assert other.post("/api/chats", json={"id": "-100111", "title": "운영팀"}).status_code == 200
     member_after = next(
         item for item in admin.get("/api/admin/users").json()["users"] if item["username"] == "member1"
     )
     assert member_after["journal_count"] == 1
+    assert member_after["chat_count"] == 1
     assert member_after["last_seen"]
     self_delete = admin.delete(f"/api/admin/users/{admin_data['user']['id']}")
     assert self_delete.status_code == 400

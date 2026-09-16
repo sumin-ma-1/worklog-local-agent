@@ -12,6 +12,7 @@ const state = {
   journals: [],
   journalSelected: null,
   calendarMonth: null,
+  explorerOpen: {},
   accounts: [],
 };
 
@@ -282,6 +283,112 @@ function ensureCalendarMonth() {
   state.calendarMonth = { y: now.getFullYear(), m: now.getMonth() + 1 };
 }
 
+function weekdayLabel(y, m, d) {
+  return ["일", "월", "화", "수", "목", "금", "토"][new Date(y, m - 1, d).getDay()];
+}
+
+function weekIndexInMonth(y, m, d) {
+  const firstWeekday = new Date(y, m - 1, 1).getDay();
+  return Math.floor((d + firstWeekday - 1) / 7) + 1;
+}
+
+function weekRangeInMonth(y, m, weekIndex) {
+  const firstWeekday = new Date(y, m - 1, 1).getDay();
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const start = Math.max(1, (weekIndex - 1) * 7 - firstWeekday + 1);
+  const end = Math.min(daysInMonth, start + 6);
+  return { start, end };
+}
+
+function sortJournalsDescending(items) {
+  return [...(items || [])].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+}
+
+function explorerKey(...parts) {
+  return parts.join(":");
+}
+
+function isExplorerOpen(key, fallback = false) {
+  if (Object.prototype.hasOwnProperty.call(state.explorerOpen, key)) {
+    return Boolean(state.explorerOpen[key]);
+  }
+  return fallback;
+}
+
+function setExplorerOpen(key, open) {
+  state.explorerOpen = { ...state.explorerOpen, [key]: Boolean(open) };
+}
+
+function ensureExplorerPathForDay(day) {
+  const parsed = parseDay(day);
+  if (!parsed) return;
+  const yearKey = explorerKey("y", parsed.y);
+  const monthKeyId = explorerKey("ym", parsed.y, parsed.m);
+  const week = weekIndexInMonth(parsed.y, parsed.m, parsed.d);
+  const weekKey = explorerKey("yw", parsed.y, parsed.m, week);
+  setExplorerOpen(yearKey, true);
+  setExplorerOpen(monthKeyId, true);
+  setExplorerOpen(weekKey, true);
+}
+
+function buildJournalExplorerTree(items) {
+  const years = new Map();
+  for (const item of sortJournalsDescending(items)) {
+    const parsed = parseDay(item.date);
+    if (!parsed) continue;
+    if (!years.has(parsed.y)) years.set(parsed.y, new Map());
+    const months = years.get(parsed.y);
+    if (!months.has(parsed.m)) months.set(parsed.m, new Map());
+    const weeks = months.get(parsed.m);
+    const week = weekIndexInMonth(parsed.y, parsed.m, parsed.d);
+    if (!weeks.has(week)) weeks.set(week, []);
+    weeks.get(week).push(item);
+  }
+  return [...years.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([year, months]) => ({
+      year,
+      months: [...months.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([month, weeks]) => ({
+          month,
+          weeks: [...weeks.entries()]
+            .sort((a, b) => b[0] - a[0])
+            .map(([week, days]) => ({
+              week,
+              days: sortJournalsDescending(days),
+            })),
+        })),
+    }));
+}
+
+function countTreeDays(node) {
+  if (node.days) return node.days.length;
+  if (node.weeks) return node.weeks.reduce((sum, week) => sum + week.days.length, 0);
+  if (node.months) {
+    return node.months.reduce(
+      (sum, month) => sum + month.weeks.reduce((inner, week) => inner + week.days.length, 0),
+      0
+    );
+  }
+  return 0;
+}
+
+function renderExplorerFolder({ key, depth, label, count, open, childrenHtml }) {
+  const icon = open ? "folder_open" : "folder";
+  const chevron = open ? "expand_more" : "chevron_right";
+  return `
+    <li class="explorer-item explorer-folder" style="--depth:${depth}">
+      <button type="button" class="explorer-row" data-explorer-toggle="${escapeHtml(key)}" aria-expanded="${open ? "true" : "false"}">
+        <span class="material-symbols-outlined explorer-chevron" aria-hidden="true">${chevron}</span>
+        <span class="material-symbols-outlined explorer-icon" aria-hidden="true">${icon}</span>
+        <span class="explorer-label">${escapeHtml(label)}</span>
+        <span class="meta">${count}</span>
+      </button>
+      ${open ? `<ul class="explorer-children">${childrenHtml}</ul>` : ""}
+    </li>`;
+}
+
 function renderJournalList() {
   const list = $("#journal-list");
   if (!list) return;
@@ -289,17 +396,85 @@ function renderJournalList() {
     list.innerHTML = `<li class="empty">아직 생성된 일지가 없습니다.</li>`;
     return;
   }
-  list.innerHTML = state.journals
-    .map(
-      (item) => `
-      <li>
-        <button class="link${item.date === state.journalSelected ? " selected" : ""}" data-date="${item.date}">
-          ${item.date}
-          <span class="meta">첨부 ${item.attachments}</span>
-        </button>
-      </li>`
-    )
+
+  if (state.journalSelected) ensureExplorerPathForDay(state.journalSelected);
+  else if (state.journals[0]?.date) ensureExplorerPathForDay(state.journals[0].date);
+
+  const tree = buildJournalExplorerTree(state.journals);
+  list.classList.add("explorer-list");
+  list.innerHTML = tree
+    .map((yearNode) => {
+      const yearKey = explorerKey("y", yearNode.year);
+      const yearOpen = isExplorerOpen(yearKey, false);
+      const monthsHtml = yearNode.months
+        .map((monthNode) => {
+          const monthKeyId = explorerKey("ym", yearNode.year, monthNode.month);
+          const monthOpen = isExplorerOpen(monthKeyId, false);
+          const weeksHtml = monthNode.weeks
+            .map((weekNode) => {
+              const weekKey = explorerKey("yw", yearNode.year, monthNode.month, weekNode.week);
+              const weekOpen = isExplorerOpen(weekKey, false);
+              const range = weekRangeInMonth(yearNode.year, monthNode.month, weekNode.week);
+              const daysHtml = weekNode.days
+                .map((item) => {
+                  const parsed = parseDay(item.date);
+                  const dayLabel = parsed
+                    ? `${parsed.d}일 (${weekdayLabel(parsed.y, parsed.m, parsed.d)})`
+                    : item.date;
+                  const selected = item.date === state.journalSelected ? " selected" : "";
+                  return `
+                    <li class="explorer-item explorer-file" style="--depth:3">
+                      <button type="button" class="explorer-row link${selected}" data-date="${item.date}">
+                        <span class="explorer-chevron-spacer" aria-hidden="true"></span>
+                        <span class="material-symbols-outlined explorer-icon" aria-hidden="true">description</span>
+                        <span class="explorer-label">
+                          <strong>${escapeHtml(dayLabel)}</strong>
+                          <span class="meta">첨부 ${item.attachments || 0}</span>
+                        </span>
+                      </button>
+                    </li>`;
+                })
+                .join("");
+              return renderExplorerFolder({
+                key: weekKey,
+                depth: 2,
+                label: `${weekNode.week}주 (${monthNode.month}/${range.start}–${monthNode.month}/${range.end})`,
+                count: weekNode.days.length,
+                open: weekOpen,
+                childrenHtml: daysHtml,
+              });
+            })
+            .join("");
+          return renderExplorerFolder({
+            key: monthKeyId,
+            depth: 1,
+            label: `${monthNode.month}월`,
+            count: countTreeDays(monthNode),
+            open: monthOpen,
+            childrenHtml: weeksHtml,
+          });
+        })
+        .join("");
+      return renderExplorerFolder({
+        key: yearKey,
+        depth: 0,
+        label: `${yearNode.year}년`,
+        count: countTreeDays(yearNode),
+        open: yearOpen,
+        childrenHtml: monthsHtml,
+      });
+    })
     .join("");
+
+  list.querySelectorAll("[data-explorer-toggle]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.explorerToggle;
+      const currentlyOpen = isExplorerOpen(key, false);
+      setExplorerOpen(key, !currentlyOpen);
+      renderJournalList();
+      updateJournalScrollFade();
+    });
+  });
   list.querySelectorAll("button[data-date]").forEach((btn) => {
     btn.addEventListener("click", () => loadJournal(btn.dataset.date));
   });
@@ -373,26 +548,22 @@ function renderJournalCalendar() {
     <div class="cal-grid">${cells}</div>
   `;
 
-  $("#cal-prev")?.addEventListener("click", () => {
+  const shiftMonth = (delta) => {
     let { y: cy, m: cm } = state.calendarMonth;
-    cm -= 1;
+    cm += delta;
     if (cm < 1) {
       cm = 12;
       cy -= 1;
-    }
-    state.calendarMonth = { y: cy, m: cm };
-    renderJournalCalendar();
-  });
-  $("#cal-next")?.addEventListener("click", () => {
-    let { y: cy, m: cm } = state.calendarMonth;
-    cm += 1;
-    if (cm > 12) {
+    } else if (cm > 12) {
       cm = 1;
       cy += 1;
     }
     state.calendarMonth = { y: cy, m: cm };
     renderJournalCalendar();
-  });
+  };
+
+  $("#cal-prev")?.addEventListener("click", () => shiftMonth(-1));
+  $("#cal-next")?.addEventListener("click", () => shiftMonth(1));
   $("#cal-year")?.addEventListener("change", (event) => {
     const nextY = Number(event.target.value);
     if (!Number.isFinite(nextY)) return;
@@ -418,7 +589,7 @@ function renderJournalBrowse() {
 async function loadJournals(selectDay) {
   if (!state.authorized) return;
   const data = await api("/api/journals");
-  state.journals = data.journals || [];
+  state.journals = sortJournalsDescending(data.journals || []);
   if (selectDay) state.journalSelected = selectDay;
   if (!state.journals.length) {
     renderJournalBrowse();
@@ -427,6 +598,12 @@ async function loadJournals(selectDay) {
     }
     updateJournalScrollFade();
     return;
+  }
+  const selected = parseDay(state.journalSelected);
+  if (selected) {
+    state.calendarMonth = { y: selected.y, m: selected.m };
+  } else {
+    ensureCalendarMonth();
   }
   renderJournalBrowse();
   updateJournalScrollFade();
@@ -577,13 +754,14 @@ function renderAccounts(users) {
   if (!body) return;
   state.accounts = users || [];
   if (!state.accounts.length) {
-    body.innerHTML = `<tr><td colspan="6" class="empty">가입된 계정이 없습니다.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7" class="empty">가입된 계정이 없습니다.</td></tr>`;
     return;
   }
   body.innerHTML = state.accounts
     .map((user) => {
       const self = state.username && user.username === state.username;
       const linked = user.telegram_linked ? "연동" : "미연동";
+      const chats = Number.isFinite(Number(user.chat_count)) ? String(user.chat_count) : "0";
       const journals = Number.isFinite(Number(user.journal_count)) ? String(user.journal_count) : "0";
       const action = self
         ? `<span class="meta">본인</span>`
@@ -593,6 +771,7 @@ function renderAccounts(users) {
           <td><strong>${escapeHtml(user.username || "")}</strong></td>
           <td>${escapeHtml(formatAccountDate(user.created_at))}</td>
           <td>${escapeHtml(formatAccountDate(user.last_seen))}</td>
+          <td>${escapeHtml(chats)}</td>
           <td>${escapeHtml(journals)}</td>
           <td>${linked}</td>
           <td class="accounts-actions">${action}</td>
@@ -607,12 +786,12 @@ function renderAccounts(users) {
 async function loadAccounts() {
   if (!state.isAdmin) return;
   const body = $("#accounts-tbody");
-  if (body) body.innerHTML = `<tr><td colspan="6" class="empty">불러오는 중…</td></tr>`;
+  if (body) body.innerHTML = `<tr><td colspan="7" class="empty">불러오는 중…</td></tr>`;
   try {
     const data = await api("/api/admin/users");
     renderAccounts(data.users || []);
   } catch (err) {
-    if (body) body.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(err.message)}</td></tr>`;
+    if (body) body.innerHTML = `<tr><td colspan="7" class="empty">${escapeHtml(err.message)}</td></tr>`;
     showBanner(err.message, "error");
   }
 }

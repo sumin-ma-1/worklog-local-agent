@@ -577,6 +577,116 @@ main {
   color: var(--accent);
 }
 
+.explorer-list,
+.explorer-list .explorer-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: block;
+  width: 100%;
+}
+
+.explorer-list > .explorer-item,
+.explorer-list .explorer-item {
+  display: block;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0;
+  border-bottom: 0;
+  width: 100%;
+}
+
+.explorer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  padding: 7px 8px 7px calc(8px + var(--depth, 0) * 16px);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  min-height: 34px;
+}
+
+.explorer-row:hover {
+  background: #eef3fb;
+}
+
+.explorer-row.selected,
+.explorer-list .explorer-row.link.selected {
+  background: #e8eefc;
+  color: var(--accent);
+}
+
+.explorer-chevron,
+.explorer-icon,
+.explorer-chevron-spacer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
+}
+
+.explorer-folder > .explorer-row .explorer-icon {
+  color: #c9a227;
+}
+
+.explorer-file > .explorer-row .explorer-icon {
+  color: #6b7c93;
+}
+
+.explorer-label {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.explorer-label strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.explorer-label .meta {
+  display: none;
+}
+
+.explorer-row > .meta {
+  margin: 0 0 0 auto;
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.explorer-file .explorer-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.explorer-file .explorer-label .meta {
+  display: inline;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .journal-calendar {
   padding: 0;
 }
