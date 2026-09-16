@@ -71,8 +71,10 @@ def test_home_has_account_login(tmp_path: Path) -> None:
     client = TestClient(create_app(config_path))
     home = client.get("/")
     assert home.status_code == 200
-    assert "회원가입" in home.text
+    assert "가입하기" in home.text
+    assert 'id="goto-register"' in home.text
     assert "api-id-input" not in home.text
+    assert "password-confirm-input" in home.text
     assert "login-phone-input" in home.text
 
 

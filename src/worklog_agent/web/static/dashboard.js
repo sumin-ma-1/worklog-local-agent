@@ -95,23 +95,26 @@ function applyAuthVisibility(authorized) {
 
 function setAuthMode(mode) {
   state.authMode = mode === "register" ? "register" : "login";
-  document.querySelectorAll(".auth-tab").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.authMode === state.authMode);
-  });
   const submit = $("#account-submit");
-  const title = $("#auth-hero-title");
-  const text = $("#auth-hero-text");
   const password = $("#password-input");
+  const confirmWrap = $("#password-confirm-wrap");
+  const gotoRegister = $("#goto-register");
+  const gotoLogin = $("#goto-login");
+  const status = $("#login-status");
+  status?.classList.add("hidden");
   if (state.authMode === "register") {
-    if (title) title.textContent = "회원가입";
-    if (text) text.textContent = "아이디와 비밀번호로 Worklog 계정을 만듭니다.";
     if (submit) submit.textContent = "가입하기";
     if (password) password.autocomplete = "new-password";
+    confirmWrap?.classList.remove("hidden");
+    gotoRegister?.classList.add("hidden");
+    gotoLogin?.classList.remove("hidden");
   } else {
-    if (title) title.textContent = "로그인";
-    if (text) text.textContent = "아이디와 비밀번호로 Worklog에 로그인합니다.";
     if (submit) submit.textContent = "로그인";
     if (password) password.autocomplete = "current-password";
+    confirmWrap?.classList.add("hidden");
+    $("#password-confirm-input") && ($("#password-confirm-input").value = "");
+    gotoRegister?.classList.remove("hidden");
+    gotoLogin?.classList.add("hidden");
   }
 }
 
@@ -119,26 +122,43 @@ function showAccountPanel() {
   state.authenticated = false;
   $("#auth-account-panel")?.classList.remove("hidden");
   $("#auth-telegram-panel")?.classList.add("hidden");
-  setAuthMode(state.authMode || "login");
-  $("#login-status").textContent = "아이디와 비밀번호를 입력하세요.";
+  $("#auth-footer")?.classList.remove("hidden");
+  setAuthMode(state.authMode === "register" ? "register" : "login");
 }
+
+function bindAuthSwitchers() {
+  const root = $("#view-login");
+  if (!root || root.dataset.switchBound === "1") return;
+  root.dataset.switchBound = "1";
+  root.addEventListener("click", (event) => {
+    const target = event.target.closest("#goto-register, #goto-login");
+    if (!target) return;
+    event.preventDefault();
+    if (target.id === "goto-register") setAuthMode("register");
+    if (target.id === "goto-login") setAuthMode("login");
+  });
+}
+
+bindAuthSwitchers();
 
 function showTelegramPanel(phone) {
   state.authenticated = true;
   $("#auth-account-panel")?.classList.add("hidden");
   $("#auth-telegram-panel")?.classList.remove("hidden");
-  const title = $("#auth-hero-title");
-  const text = $("#auth-hero-text");
-  if (title) title.textContent = "텔레그램 연동";
-  if (text) text.textContent = "전화번호로 텔레그램 계정을 한 번만 연동하면 됩니다.";
+  $("#auth-footer")?.classList.add("hidden");
+  const status = $("#login-status");
   if (phone && $("#login-phone-input")) $("#login-phone-input").value = phone;
   renderLoginForms(state.loginStage === "authorized" ? "idle" : state.loginStage);
-  $("#login-status").textContent =
+  const message =
     state.loginStage === "code"
       ? "인증코드를 입력하세요."
       : state.loginStage === "password"
         ? "2단계 인증 비밀번호를 입력하세요."
         : "텔레그램 연동이 필요합니다.";
+  if (status) {
+    status.textContent = message;
+    status.classList.remove("hidden");
+  }
 }
 
 function renderLoginForms(stage) {
@@ -788,7 +808,7 @@ document.querySelectorAll(".nav-btn[data-view]").forEach((btn) => {
   });
 });
 
-$("#add-chat-form").addEventListener("submit", (event) => {
+$("#add-chat-form")?.addEventListener("submit", (event) => {
   event.preventDefault();
   const id = $("#chat-id-input").value.trim();
   if (!id) return;
@@ -797,14 +817,17 @@ $("#add-chat-form").addEventListener("submit", (event) => {
   });
 });
 
-document.querySelectorAll(".auth-tab").forEach((btn) => {
-  btn.addEventListener("click", () => setAuthMode(btn.dataset.authMode));
-});
-
 $("#account-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const username = $("#username-input")?.value.trim() || "";
   const password = $("#password-input")?.value || "";
+  if (state.authMode === "register") {
+    const confirm = $("#password-confirm-input")?.value || "";
+    if (password !== confirm) {
+      showBanner("비밀번호 확인이 일치하지 않습니다.", "error");
+      return;
+    }
+  }
   const path = state.authMode === "register" ? "/api/auth/register" : "/api/auth/login";
   try {
     const data = await api(path, {
@@ -812,6 +835,7 @@ $("#account-form")?.addEventListener("submit", async (event) => {
       body: JSON.stringify({ username, password }),
     });
     $("#password-input").value = "";
+    if ($("#password-confirm-input")) $("#password-confirm-input").value = "";
     const linked = Boolean(data.telegram?.linked || data.telegram?.authorized);
     if (linked) {
       showBanner(state.authMode === "register" ? "가입되었습니다." : "로그인되었습니다.", "ok");
@@ -838,7 +862,11 @@ $("#login-form").addEventListener("submit", async (event) => {
       body: JSON.stringify({ phone: $("#login-phone-input").value.trim() }),
     });
     renderLoginForms(data.stage);
-    $("#login-status").textContent = data.message;
+    const status = $("#login-status");
+    if (status) {
+      status.textContent = data.message;
+      status.classList.remove("hidden");
+    }
     showBanner(data.message, data.stage === "authorized" ? "ok" : "info");
     if (data.stage === "authorized") await enterDashboard();
   } catch (err) {
@@ -854,7 +882,11 @@ $("#login-code-form").addEventListener("submit", async (event) => {
       body: JSON.stringify({ code: $("#login-code-input").value.trim() }),
     });
     renderLoginForms(data.stage);
-    $("#login-status").textContent = data.message;
+    const status = $("#login-status");
+    if (status) {
+      status.textContent = data.message;
+      status.classList.remove("hidden");
+    }
     showBanner(data.message, data.stage === "authorized" ? "ok" : "info");
     $("#login-code-input").value = "";
     if (data.stage === "authorized") await enterDashboard();
@@ -871,7 +903,11 @@ $("#login-password-form").addEventListener("submit", async (event) => {
       body: JSON.stringify({ password: $("#login-password-input").value }),
     });
     renderLoginForms(data.stage);
-    $("#login-status").textContent = data.message;
+    const status = $("#login-status");
+    if (status) {
+      status.textContent = data.message;
+      status.classList.remove("hidden");
+    }
     showBanner(data.message, "ok");
     $("#login-password-input").value = "";
     if (data.stage === "authorized") await enterDashboard();
@@ -883,7 +919,11 @@ $("#login-password-form").addEventListener("submit", async (event) => {
 async function restartLogin() {
   state.loginStage = "idle";
   renderLoginForms("idle");
-  $("#login-status").textContent = "전화번호를 입력해 텔레그램을 연동하세요.";
+  const status = $("#login-status");
+  if (status) {
+    status.textContent = "전화번호를 입력해 텔레그램을 연동하세요.";
+    status.classList.remove("hidden");
+  }
   $("#login-code-input").value = "";
   $("#login-password-input").value = "";
 }
