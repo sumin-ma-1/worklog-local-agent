@@ -302,6 +302,17 @@ function sortJournalsDescending(items) {
   return [...(items || [])].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 }
 
+function renderJournalPlaceholder() {
+  const panel = $("#journal-detail");
+  if (!panel) return;
+  panel.innerHTML = `
+    <div class="journal-placeholder">
+      <img class="journal-placeholder-art" src="/static/worklog-place.png" alt="" width="280" height="280">
+      <h3 class="journal-placeholder-title">선택된 일지 없음</h3>
+      <p class="journal-placeholder-hint">달력이나 목록에서 날짜를 선택하세요.</p>
+    </div>`;
+}
+
 function explorerKey(...parts) {
   return parts.join(":");
 }
@@ -647,7 +658,7 @@ async function loadJournals(selectDay) {
     ensureCalendarMonth();
     renderJournalBrowse();
     if (!state.journalSelected) {
-      $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
+      renderJournalPlaceholder();
     }
     updateJournalScrollFade();
     return;
@@ -662,7 +673,7 @@ async function loadJournals(selectDay) {
       await loadJournal(focusDay);
       return;
     }
-    $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
+    renderJournalPlaceholder();
     return;
   }
 
@@ -679,7 +690,7 @@ async function loadJournals(selectDay) {
     return;
   }
   if (!state.journalSelected) {
-    $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
+    renderJournalPlaceholder();
   }
 }
 
@@ -804,7 +815,7 @@ async function deleteJournal(day) {
     await api(`/api/journals/${day}`, { method: "DELETE" });
     showBanner(`${day} 일지를 삭제했습니다.`, "ok");
     state.journalSelected = null;
-    $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
+    renderJournalPlaceholder();
     await loadJournals();
     await loadOverview();
     await syncRunStepsForSelectedDate();

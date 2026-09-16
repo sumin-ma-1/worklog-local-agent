@@ -7,7 +7,7 @@
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" sizes="180x180">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=auth-ui-23">
+  <link rel="stylesheet" href="/static/dashboard.css?v=auth-ui-24">
 </head>
 <body class="login-mode">
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
@@ -111,7 +111,7 @@
           <span class="nav-label">일지 생성</span>
         </button>
         <button class="nav-btn admin-only hidden" id="nav-accounts" data-view="accounts" title="계정 관리">
-          <span class="nav-icon material-symbols-outlined" aria-hidden="true">contacts_product</span>
+          <span class="nav-icon material-symbols-outlined" aria-hidden="true">shield_person</span>
           <span class="nav-label">계정 관리</span>
         </button>
       </nav>
@@ -138,7 +138,11 @@
             </div>
           </div>
           <div class="panel detail journal-detail-panel" id="journal-detail">
-            <p class="empty">왼쪽에서 날짜를 선택하세요.</p>
+            <div class="journal-placeholder">
+              <img class="journal-placeholder-art" src="/static/worklog-place.png" alt="" width="280" height="280">
+              <h3 class="journal-placeholder-title">선택된 일지 없음</h3>
+              <p class="journal-placeholder-hint">달력이나 목록에서 날짜를 선택하세요.</p>
+            </div>
           </div>
         </div>
       </section>
@@ -239,6 +243,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-  <script src="/static/dashboard.js?v=auth-ui-22"></script>
+  <script src="/static/dashboard.js?v=auth-ui-24"></script>
 </body>
 </html>
