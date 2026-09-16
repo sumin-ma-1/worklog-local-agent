@@ -1527,8 +1527,15 @@ button[type="submit"]:disabled,
 }
 
 .run-panel {
-  max-width: none;
+  max-width: 560px;
   min-width: 0;
+  width: 100%;
+}
+
+.run-main-row {
+  position: relative;
+  min-width: 0;
+  overflow: visible;
 }
 
 #view-run {
@@ -1538,6 +1545,7 @@ button[type="submit"]:disabled,
   align-items: start;
   max-width: 560px;
   grid-template-columns: minmax(0, 1fr);
+  overflow: visible;
 }
 
 @media (min-width: 1200px) {
@@ -1702,30 +1710,72 @@ button[type="submit"]:disabled,
   flex: 1;
 }
 
-.run-plan-wrap {
-  margin-top: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+.run-plan-float {
+  position: static;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: auto;
+  max-height: min(420px, 60vh);
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow:
+    0 18px 48px rgba(15, 27, 45, 0.18),
+    0 2px 8px rgba(15, 27, 45, 0.06);
+}
+
+@media (min-width: 1200px) {
+  .run-plan-float {
+    position: absolute;
+    top: 0;
+    left: calc(100% + 18px);
+    margin-top: 0;
+    width: min(400px, 36vw);
+    max-height: min(640px, calc(100vh - 140px));
+  }
+}
+
+.run-plan-float.hidden {
+  display: none !important;
 }
 
 .run-plan-head {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.run-plan-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.run-plan-head #run-plan-close {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .run-plan-head h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 17px;
+  color: var(--accent);
 }
 
 .run-plan-summary {
-  margin: 0;
+  margin: 4px 0 0;
   color: var(--muted);
   font-size: 13px;
 }
 
 .run-plan-table-wrap {
   position: relative;
-  max-height: 220px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
@@ -1733,7 +1783,7 @@ button[type="submit"]:disabled,
 }
 
 .run-plan-table-scroll {
-  max-height: 220px;
+  max-height: min(560px, calc(100vh - 220px));
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: none;

@@ -98,6 +98,8 @@ function setView(name) {
     syncRunStepsForSelectedDate();
     loadSchedules();
     loadJournalPrompt();
+  } else {
+    hideRunPlan();
   }
   if (name === "accounts") {
     loadAccounts();
@@ -1392,8 +1394,23 @@ function syncRunPreviewButton() {
   btn.querySelector(".run-preview-off")?.classList.toggle("hidden", !open);
 }
 
+function positionRunPlanFloat() {
+  const wrap = $("#run-plan-wrap");
+  const btn = $("#run-preview-button");
+  const row = $(".run-main-row");
+  if (!wrap) return;
+  if (wrap.classList.contains("hidden") || !btn || !row || window.matchMedia("(max-width: 1199px)").matches) {
+    wrap.style.top = "";
+    return;
+  }
+  const top = Math.max(0, btn.getBoundingClientRect().top - row.getBoundingClientRect().top);
+  wrap.style.top = `${Math.round(top)}px`;
+}
+
 function hideRunPlan() {
-  $("#run-plan-wrap")?.classList.add("hidden");
+  const wrap = $("#run-plan-wrap");
+  wrap?.classList.add("hidden");
+  if (wrap) wrap.style.top = "";
   syncRunPreviewButton();
   updateRunPlanScrollFade();
 }
@@ -1406,6 +1423,7 @@ function renderRunPlan(data) {
   const plan = data.plan || [];
   if (!plan.length) {
     wrap.classList.add("hidden");
+    wrap.style.top = "";
     tbody.innerHTML = "";
     syncRunPreviewButton();
     updateRunPlanScrollFade();
@@ -1428,7 +1446,10 @@ function renderRunPlan(data) {
     })
     .join("");
   syncRunPreviewButton();
-  requestAnimationFrame(updateRunPlanScrollFade);
+  requestAnimationFrame(() => {
+    positionRunPlanFloat();
+    updateRunPlanScrollFade();
+  });
 }
 
 const SCHEDULE_TARGET_LABEL = { yesterday: "어제", today: "오늘" };
@@ -1986,6 +2007,7 @@ $("#journal-list-scroll")?.addEventListener("scroll", updateJournalScrollFade, {
 window.addEventListener("resize", () => {
   updateDialogScrollFade();
   updateJournalScrollFade();
+  positionRunPlanFloat();
   updateRunPlanScrollFade();
   updateWatchedScrollFade();
 });
@@ -2010,6 +2032,8 @@ $("#run-preview-button")?.addEventListener("click", async () => {
     showBanner(err.message, "error");
   }
 });
+
+$("#run-plan-close")?.addEventListener("click", () => hideRunPlan());
 
 $("#run-form").addEventListener("submit", async (event) => {
   event.preventDefault();

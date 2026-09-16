@@ -7,7 +7,7 @@
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" sizes="180x180">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=schedule-side-1">
+  <link rel="stylesheet" href="/static/dashboard.css?v=run-plan-close-1">
 </head>
 <body class="login-mode">
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
@@ -200,6 +200,7 @@
       </section>
 
       <section id="view-run" class="view hidden">
+        <div class="run-main-row">
         <div class="panel run-panel">
           <div class="run-mode-tabs" role="tablist" aria-label="생성 범위">
             <button type="button" class="run-mode-tab is-active" data-run-mode="single" role="tab" aria-selected="true">하루</button>
@@ -269,28 +270,33 @@
                 </span>
               </button>
             </div>
-          </form>
 
-          <div id="run-plan-wrap" class="run-plan-wrap hidden">
-            <div class="row-head run-plan-head">
-              <h3>실행 계획</h3>
-              <p id="run-plan-summary" class="run-plan-summary"></p>
-            </div>
-            <div class="run-plan-table-wrap" id="run-plan-scroll-wrap">
-              <div class="run-plan-table-scroll" id="run-plan-scroll">
-                <table class="run-plan-table" id="run-plan-table">
-                  <thead>
-                    <tr>
-                      <th>날짜</th>
-                      <th>일지</th>
-                      <th>동작</th>
-                    </tr>
-                  </thead>
-                  <tbody id="run-plan-tbody"></tbody>
-                </table>
+            <aside id="run-plan-wrap" class="run-plan-float hidden" aria-label="실행 계획 미리보기">
+              <div class="row-head run-plan-head">
+                <div class="run-plan-title">
+                  <h3>실행 계획</h3>
+                  <p id="run-plan-summary" class="run-plan-summary"></p>
+                </div>
+                <button type="button" id="run-plan-close" class="icon-btn" title="닫기" aria-label="닫기">
+                  <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                </button>
               </div>
-            </div>
-          </div>
+              <div class="run-plan-table-wrap" id="run-plan-scroll-wrap">
+                <div class="run-plan-table-scroll" id="run-plan-scroll">
+                  <table class="run-plan-table" id="run-plan-table">
+                    <thead>
+                      <tr>
+                        <th>날짜</th>
+                        <th>일지</th>
+                        <th>동작</th>
+                      </tr>
+                    </thead>
+                    <tbody id="run-plan-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </aside>
+          </form>
 
           <div class="job-panel">
             <div id="job-batch" class="job-batch hidden">
@@ -328,6 +334,7 @@
             </div>
             <ul id="prompt-sections" class="prompt-section-list" aria-label="일지 형식"></ul>
           </div>
+        </div>
         </div>
 
         <div class="panel schedule-panel">
@@ -395,6 +402,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-  <script src="/static/dashboard.js?v=schedule-panel-1"></script>
+  <script src="/static/dashboard.js?v=run-plan-anchor-1"></script>
 </body>
 </html>
