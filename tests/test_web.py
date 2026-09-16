@@ -259,3 +259,102 @@ def test_admin_users_api(tmp_path: Path) -> None:
     assert remaining == {"devsm"}
     assert not user_root(app.state.dashboard.config.data_root, other_data["user"]["id"]).exists()
     assert other.get("/api/journals").status_code == 401
+
+
+def test_run_plan_skip_existing(tmp_path: Path) -> None:
+    client, state, user_id = _authed_linked_client(tmp_path)
+    data_root = user_root(state.config.data_root, user_id)
+    journals = data_root / "journals"
+    journals.mkdir(parents=True, exist_ok=True)
+    (journals / "2026-03-01.md").write_text("# one", encoding="utf-8")
+    (journals / "2026-03-02.md").write_text("# two", encoding="utf-8")
+
+    response = client.post(
+        "/api/run/plan",
+        json={"start": "2026-03-01", "end": "2026-03-03", "skip_existing": True},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["run_count"] == 1
+    assert data["skip_count"] == 2
+    assert data["plan"][0]["action"] == "skip"
+    assert data["plan"][-1]["action"] == "run"
+
+    empty = client.post(
+        "/api/run",
+        json={"start": "2026-03-01", "end": "2026-03-02", "skip_existing": True},
+    )
+    assert empty.status_code == 400
+    assert empty.json()["detail"] == "생성할 날짜가 없습니다."
+
+
+def test_run_plan_range_limit(tmp_path: Path) -> None:
+    client, _, _ = _authed_linked_client(tmp_path)
+    response = client.post(
+        "/api/run/plan",
+        json={"start": "2026-01-01", "end": "2026-02-05"},
+    )
+    assert response.status_code == 400
+    assert "31" in response.json()["detail"]
+
+
+def test_run_plan_pick_dates(tmp_path: Path) -> None:
+    client, _, _ = _authed_linked_client(tmp_path)
+    response = client.post(
+        "/api/run/plan",
+        json={"dates": ["2026-03-01", "2026-03-05", "2026-03-03"]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["dates"] == ["2026-03-05", "2026-03-03", "2026-03-01"]
+    assert len(data["plan"]) == 3
+    assert data["run_count"] == 3
+
+
+def test_run_plan_regenerate_if_stale(tmp_path: Path) -> None:
+    client, state, user_id = _authed_linked_client(tmp_path)
+    data_root = user_root(state.config.data_root, user_id)
+    journals = data_root / "journals"
+    journals.mkdir(parents=True, exist_ok=True)
+    (journals / "2026-03-01.md").write_text("# one", encoding="utf-8")
+    (journals / "2026-03-01.meta.json").write_text(
+        '{"date":"2026-03-01","source_fingerprint":"old"}',
+        encoding="utf-8",
+    )
+
+    response = client.post(
+        "/api/run/plan",
+        json={"date": "2026-03-01", "regenerate_if_stale": True},
+    )
+    assert response.status_code == 200
+    item = response.json()["plan"][0]
+    assert item["action"] == "run"
+    assert item["reason"] == "stale"
+
+
+def test_schedules_api_crud(tmp_path: Path) -> None:
+    client, state, user_id = _authed_linked_client(tmp_path)
+    root = user_root(state.config.data_root, user_id)
+
+    created = client.post(
+        "/api/schedules",
+        json={"name": "저녁 일지", "time": "21:00", "target": "yesterday", "skip_existing": True},
+    )
+    assert created.status_code == 200
+    schedule_id = created.json()["schedule"]["id"]
+
+    listed = client.get("/api/schedules")
+    assert listed.status_code == 200
+    assert len(listed.json()["schedules"]) == 1
+
+    patched = client.patch(
+        f"/api/schedules/{schedule_id}",
+        json={"enabled": False, "name": "수정됨"},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["schedule"]["enabled"] is False
+    assert patched.json()["schedule"]["name"] == "수정됨"
+
+    deleted = client.delete(f"/api/schedules/{schedule_id}")
+    assert deleted.status_code == 200
+    assert client.get("/api/schedules").json()["schedules"] == []

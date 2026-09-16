@@ -14,6 +14,8 @@ from worklog_agent.ollama import (
     warmup_model,
 )
 from worklog_agent.organize import organize_day, target_day
+from worklog_agent.journal_meta import write_journal_meta
+from worklog_agent.source_fingerprint import day_source_fingerprint
 from worklog_agent.storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -82,6 +84,16 @@ class Pipeline:
         await emit_progress(on_progress, f"{resolved} · 일지 생성 중 ({model})", "journal")
         markdown = await generate_journal(bundle, self.config, model=model)
         path = self.storage.save_journal(resolved, markdown)
+        write_journal_meta(
+            self.storage,
+            resolved,
+            source_fingerprint=day_source_fingerprint(
+                self.storage,
+                resolved,
+                self.config.timezone,
+            ),
+            model=model,
+        )
         logger.info("일지 저장: %s", path)
         return str(path)
 

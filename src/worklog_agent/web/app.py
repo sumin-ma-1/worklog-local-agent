@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
 import threading
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,7 +24,13 @@ from worklog_agent.config import (
     load_config,
     normalize_chat_ref,
 )
-from worklog_agent.pipeline import Pipeline
+from worklog_agent.schedules import (
+    ScheduleError,
+    create_schedule,
+    delete_schedule,
+    load_schedules,
+    update_schedule,
+)
 from worklog_agent.storage import Storage
 from worklog_agent.telegram_auth import (
     LoginSession,
@@ -52,6 +58,15 @@ from worklog_agent.users import (
     user_root,
 )
 from worklog_agent.web.auth_session import COOKIE_USER, SessionStore
+from worklog_agent.journal_meta import delete_journal_meta
+from worklog_agent.web.run_plan import dates_to_run, plan_run_days, resolve_run_dates
+from worklog_agent.web.run_service import (
+    EmptyPlanError,
+    JobState,
+    RunBusyError,
+    UserRuntime,
+    enqueue_planned_run,
+)
 
 logger = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).parent
@@ -63,31 +78,6 @@ def _require_day(day: str) -> str:
     if not _DAY_RE.fullmatch(day):
         raise HTTPException(status_code=400, detail="날짜 형식이 올바르지 않습니다. YYYY-MM-DD")
     return day
-
-
-@dataclass
-class JobState:
-    status: str = "idle"
-    message: str = ""
-    step: str | None = None
-    date: str | None = None
-    path: str | None = None
-
-
-@dataclass
-class UserRuntime:
-    job: JobState = field(default_factory=JobState)
-    job_lock: threading.Lock = field(default_factory=threading.Lock)
-    worker: threading.Thread | None = None
-
-    def set_job(self, **kwargs: object) -> dict:
-        with self.job_lock:
-            self.job = JobState(**kwargs)  # type: ignore[arg-type]
-            return dict(self.job.__dict__)
-
-    def snapshot_job(self) -> dict:
-        with self.job_lock:
-            return dict(self.job.__dict__)
 
 
 @dataclass
@@ -136,6 +126,32 @@ class JournalBody(BaseModel):
 
 class RunBody(BaseModel):
     date: str | None = Field(default=None)
+    start: str | None = Field(default=None)
+    end: str | None = Field(default=None)
+    dates: list[str] | None = Field(default=None)
+    skip_existing: bool = False
+    regenerate_if_stale: bool = False
+    force: bool = False
+
+
+class ScheduleBody(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    enabled: bool = True
+    time: str = Field(min_length=5, max_length=5)
+    target: str = Field(default="yesterday")
+    skip_existing: bool = True
+    regenerate_if_stale: bool = False
+    force: bool = False
+
+
+class SchedulePatchBody(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    enabled: bool | None = None
+    time: str | None = Field(default=None, min_length=5, max_length=5)
+    target: str | None = None
+    skip_existing: bool | None = None
+    regenerate_if_stale: bool | None = None
+    force: bool | None = None
 
 
 class AuthBody(BaseModel):
@@ -236,7 +252,25 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         accounts=AccountStore(base.data_root),
     )
 
-    app = FastAPI(title="worklog-local-agent", docs_url=None, redoc_url=None)
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        stop = threading.Event()
+
+        def scheduler_loop() -> None:
+            while not stop.wait(60):
+                try:
+                    from worklog_agent.schedules import tick_all_schedules
+
+                    tick_all_schedules(state.config, state.runtime_for)
+                except Exception:
+                    logger.exception("예약 실행 tick 실패")
+
+        thread = threading.Thread(target=scheduler_loop, daemon=True, name="worklog-scheduler")
+        thread.start()
+        yield
+        stop.set()
+
+    app = FastAPI(title="worklog-local-agent", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.dashboard = state
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
@@ -747,6 +781,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         storage = Storage(cfg.data_root)
         if not storage.delete_journal(day):
             raise HTTPException(status_code=404, detail="삭제할 일지가 없습니다.")
+        delete_journal_meta(storage, day)
         revoke_share_for_day(cfg.data_root, day)
         return {"date": day, "deleted": True}
 
@@ -778,6 +813,36 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return FileResponse(file_path, filename=file_path.name)
 
+    @app.post("/api/run/plan")
+    async def run_plan(request: Request, body: RunBody) -> dict:
+        _, cfg = require_telegram(request)
+        try:
+            dates = resolve_run_dates(
+                date=body.date,
+                start=body.start,
+                end=body.end,
+                dates=body.dates,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        for day in dates:
+            _require_day(day)
+        storage = Storage(cfg.data_root)
+        plan = plan_run_days(
+            storage,
+            dates,
+            skip_existing=body.skip_existing,
+            regenerate_if_stale=body.regenerate_if_stale,
+            force=body.force,
+            tz_name=cfg.timezone,
+        )
+        return {
+            "dates": dates,
+            "plan": plan,
+            "run_count": len(dates_to_run(plan)),
+            "skip_count": sum(1 for item in plan if item["action"] == "skip"),
+        }
+
     @app.get("/api/job")
     async def job(request: Request) -> dict:
         user_id, _ = require_telegram(request)
@@ -787,74 +852,60 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     async def run_pipeline(request: Request, body: RunBody) -> dict:
         user_id, cfg = require_telegram(request)
         runtime = state.runtime_for(user_id)
-        with runtime.job_lock:
-            busy = runtime.job.status == "running" or (
-                runtime.worker is not None and runtime.worker.is_alive()
+        payload = body.model_dump()
+        try:
+            dates = resolve_run_dates(
+                date=body.date,
+                start=body.start,
+                end=body.end,
+                dates=body.dates,
             )
-        if busy:
-            raise HTTPException(status_code=409, detail="이미 실행 중입니다.")
-        day = body.date
-        snapshot = runtime.set_job(
-            status="running",
-            message="파이프라인을 시작합니다…",
-            step="collect",
-            date=day,
-            path=None,
-        )
-        worker = threading.Thread(
-            target=_run_pipeline_thread,
-            args=(cfg, runtime, day),
-            daemon=True,
-            name=f"worklog-pipeline-{user_id}",
-        )
-        runtime.worker = worker
-        worker.start()
-        return snapshot
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        for day in dates:
+            _require_day(day)
+        try:
+            return enqueue_planned_run(state.config, user_id, cfg, runtime, payload)
+        except RunBusyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except EmptyPlanError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/schedules")
+    async def list_schedules(request: Request) -> dict:
+        user_id, cfg = require_telegram(request)
+        root = user_root(cfg.data_root, user_id)
+        return {"schedules": load_schedules(root)}
+
+    @app.post("/api/schedules")
+    async def add_schedule(request: Request, body: ScheduleBody) -> dict:
+        user_id, cfg = require_telegram(request)
+        root = user_root(cfg.data_root, user_id)
+        try:
+            item = create_schedule(root, body.model_dump())
+        except ScheduleError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"schedule": item}
+
+    @app.patch("/api/schedules/{schedule_id}")
+    async def patch_schedule(request: Request, schedule_id: str, body: SchedulePatchBody) -> dict:
+        user_id, cfg = require_telegram(request)
+        root = user_root(cfg.data_root, user_id)
+        payload = body.model_dump(exclude_unset=True)
+        if not payload:
+            raise HTTPException(status_code=400, detail="변경할 항목이 없습니다.")
+        try:
+            item = update_schedule(root, schedule_id, payload)
+        except ScheduleError as exc:
+            raise HTTPException(status_code=404 if "찾을" in str(exc) else 400, detail=str(exc)) from exc
+        return {"schedule": item}
+
+    @app.delete("/api/schedules/{schedule_id}")
+    async def remove_schedule(request: Request, schedule_id: str) -> dict:
+        user_id, cfg = require_telegram(request)
+        root = user_root(cfg.data_root, user_id)
+        if not delete_schedule(root, schedule_id):
+            raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다.")
+        return {"deleted": True, "id": schedule_id}
 
     return app
-
-
-def _run_pipeline_thread(cfg: AppConfig, runtime: UserRuntime, day: str | None) -> None:
-    try:
-        asyncio.run(_run_pipeline(cfg, runtime, day))
-    except Exception as exc:
-        logger.exception("대시보드 파이프라인 스레드 실패")
-        runtime.set_job(
-            status="error",
-            message=str(exc),
-            step=runtime.snapshot_job().get("step"),
-            date=day,
-            path=None,
-        )
-
-
-async def _run_pipeline(cfg: AppConfig, runtime: UserRuntime, day: str | None) -> None:
-    async def progress(message: str, step: str | None = None) -> None:
-        current = runtime.snapshot_job()
-        runtime.set_job(
-            status="running",
-            message=message,
-            step=step or current.get("step"),
-            date=day,
-            path=None,
-        )
-
-    try:
-        path = await Pipeline(cfg).run(day, on_progress=progress)
-        runtime.set_job(
-            status="done",
-            message="일지 생성을 마쳤습니다.",
-            step="done",
-            date=day,
-            path=path,
-        )
-    except Exception as exc:
-        logger.exception("대시보드 파이프라인 실패")
-        current = runtime.snapshot_job()
-        runtime.set_job(
-            status="error",
-            message=str(exc),
-            step=current.get("step"),
-            date=day,
-            path=None,
-        )

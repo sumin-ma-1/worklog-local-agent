@@ -123,6 +123,23 @@ def run(
     typer.echo(f"완료: {path}")
 
 
+@app.command("schedule-tick")
+def schedule_tick(ctx: typer.Context) -> None:
+    """예약된 일지 생성을 실행합니다. cron/systemd 에서 1분마다 호출하세요."""
+    from worklog_agent.config import AppConfig
+    from worklog_agent.schedules import tick_all_schedules
+    from worklog_agent.web.run_service import RuntimeRegistry
+
+    config: AppConfig = ctx.obj
+    registry = RuntimeRegistry()
+    results = tick_all_schedules(config, registry.runtime_for, wait=True)
+    if not results:
+        typer.echo("실행할 예약이 없습니다.")
+        return
+    for row in results:
+        typer.echo(f"{row['user_id']}\t{row['schedule_id']}\t{row['status']}")
+
+
 @app.command()
 def dashboard(
     ctx: typer.Context,

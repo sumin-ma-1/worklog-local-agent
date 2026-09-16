@@ -14,6 +14,7 @@ const state = {
   calendarMonth: null,
   explorerOpen: {},
   accounts: [],
+  showChatIds: false,
 };
 
 let toastTimer = null;
@@ -87,6 +88,7 @@ function setView(name) {
   }
   if (name === "run") {
     syncRunStepsForSelectedDate();
+    loadSchedules();
   }
   if (name === "accounts") {
     loadAccounts();
@@ -451,11 +453,26 @@ function renderExplorerFolder({ key, depth, label, count, open, childrenHtml }) 
     </li>`;
 }
 
+function panelEmptyHtml({ src, title, hint = "", size = 160 } = {}) {
+  return `<li class="panel-empty">
+    <img class="panel-empty-art" src="${escapeHtml(src)}" alt="" width="${size}" height="${size}">
+    <p class="panel-empty-title">${escapeHtml(title)}</p>
+    ${hint ? `<p class="panel-empty-hint">${escapeHtml(hint)}</p>` : ""}
+  </li>`;
+}
+
 function renderJournalList() {
   const list = $("#journal-list");
   if (!list) return;
   if (!state.journals.length) {
-    list.innerHTML = `<li class="empty">아직 생성된 일지가 없습니다.</li>`;
+    list.classList.remove("explorer-list");
+    list.innerHTML = panelEmptyHtml({
+      src: "/static/worklog-list.png",
+      title: "아직 생성된 일지가 없습니다",
+      hint: "일지 생성 탭에서 만들 수 있습니다.",
+      size: 180,
+    });
+    updateJournalScrollFade();
     return;
   }
 
@@ -897,7 +914,12 @@ async function loadWatched() {
   const data = await api("/api/chats");
   const list = $("#watched-list");
   if (!data.chats.length) {
-    list.innerHTML = `<li class="empty">등록된 업무방이 없습니다.</li>`;
+    list.innerHTML = panelEmptyHtml({
+      src: "/static/worklog-coll.png",
+      title: "등록된 업무방 없음",
+      hint: "참여 대화 목록에서 대화를 추가하세요.",
+      size: 140,
+    });
     return;
   }
   list.innerHTML = data.chats
@@ -906,7 +928,7 @@ async function loadWatched() {
       <li>
         <div>
           <strong>${escapeHtml(String(chat.title))}</strong>
-          <span class="meta">${escapeHtml(String(chat.id))}</span>
+          ${state.showChatIds ? `<span class="meta">${escapeHtml(String(chat.id))}</span>` : ""}
         </div>
         <button class="danger icon-action" data-id="${escapeHtml(String(chat.id))}" title="삭제" aria-label="삭제">
           <span class="material-symbols-outlined" aria-hidden="true">delete</span>
@@ -937,7 +959,16 @@ function renderDialogs(filter) {
   });
   const list = $("#dialog-list");
   if (!rows.length) {
-    list.innerHTML = `<li class="empty">표시할 대화가 없습니다.</li>`;
+    if (!state.dialogs.length) {
+      list.innerHTML = panelEmptyHtml({
+        src: "/static/worklog-conv.png",
+        title: "참여 대화가 없습니다",
+        hint: "새로고침으로 텔레그램 대화를 불러오세요.",
+        size: 140,
+      });
+    } else {
+      list.innerHTML = `<li class="empty">표시할 대화가 없습니다.</li>`;
+    }
     updateDialogScrollFade();
     return;
   }
@@ -946,11 +977,14 @@ function renderDialogs(filter) {
       const action = item.watched
         ? `<button class="danger icon-action" data-id="${item.id}" title="삭제" aria-label="삭제"><span class="material-symbols-outlined" aria-hidden="true">delete</span></button>`
         : `<button class="link btn-with-icon icon-action" data-add="${item.id}" title="추가" aria-label="추가"><span class="material-symbols-outlined" aria-hidden="true">add</span></button>`;
+      const meta = state.showChatIds
+        ? `${item.id} · ${escapeHtml(item.type)}`
+        : escapeHtml(item.type);
       return `
         <li>
           <div>
             <strong>${escapeHtml(item.title || "(제목 없음)")}</strong>
-            <span class="meta">${item.id} · ${escapeHtml(item.type)}</span>
+            <span class="meta">${meta}</span>
           </div>
           ${action}
         </li>`;
@@ -1025,7 +1059,218 @@ async function removeChat(id) {
 }
 
 let lastJobStatus = null;
+let runMode = "single";
+const runPickDates = new Set();
+const RUN_PICK_MAX = 31;
 const JOB_STEP_ORDER = ["collect", "archive", "organize", "model", "journal"];
+const PLAN_ACTION_LABEL = { run: "생성", skip: "건너뜀" };
+const PLAN_REASON_LABEL = {
+  force: "강제 재생성",
+  already_exists: "일지 있음",
+  missing_journal: "일지 없음",
+  regenerate: "재생성",
+  stale: "소스 변경됨",
+  up_to_date: "최신",
+  legacy_no_meta: "메타 없음(건너뜀)",
+};
+
+function setRunMode(mode) {
+  runMode = mode;
+  document.querySelectorAll(".run-mode-tab").forEach((btn) => {
+    const active = btn.dataset.runMode === mode;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  $("#run-single-fields")?.classList.toggle("hidden", mode !== "single");
+  $("#run-range-fields")?.classList.toggle("hidden", mode !== "range");
+  $("#run-pick-fields")?.classList.toggle("hidden", mode !== "pick");
+  syncRunStepsForSelectedDate();
+}
+
+function renderRunPickList() {
+  const list = $("#run-pick-list");
+  const hint = $("#run-pick-hint");
+  if (!list) return;
+  const dates = [...runPickDates].sort().reverse();
+  if (!dates.length) {
+    list.innerHTML = "";
+    if (hint) hint.textContent = "날짜를 추가하세요. 최대 31일.";
+    return;
+  }
+  list.innerHTML = dates
+    .map(
+      (day) =>
+        `<li><button type="button" class="run-pick-chip" data-day="${escapeHtml(day)}" title="클릭하여 제거">${escapeHtml(day)}<span class="material-symbols-outlined" aria-hidden="true">close</span></button></li>`
+    )
+    .join("");
+  if (hint) hint.textContent = `${dates.length}일 선택 · 최대 ${RUN_PICK_MAX}일`;
+}
+
+function addRunPickDate(day) {
+  if (!day) throw new Error("날짜를 선택하세요.");
+  if (runPickDates.has(day)) throw new Error("이미 추가된 날짜입니다.");
+  if (runPickDates.size >= RUN_PICK_MAX) throw new Error(`최대 ${RUN_PICK_MAX}일까지 선택할 수 있습니다.`);
+  runPickDates.add(day);
+  renderRunPickList();
+  $("#run-plan-wrap")?.classList.add("hidden");
+}
+
+function removeRunPickDate(day) {
+  runPickDates.delete(day);
+  renderRunPickList();
+  $("#run-plan-wrap")?.classList.add("hidden");
+}
+
+function syncRunOptionChecks() {
+  const force = $("#run-force");
+  const skip = $("#run-skip-existing");
+  const stale = $("#run-regenerate-stale");
+  if (!force || !skip || !stale) return;
+  if (force.checked) {
+    skip.checked = false;
+    stale.checked = false;
+    skip.disabled = true;
+    stale.disabled = true;
+    return;
+  }
+  skip.disabled = false;
+  stale.disabled = false;
+  if (skip.checked) {
+    stale.checked = false;
+    stale.disabled = true;
+  } else if (stale.checked) {
+    skip.checked = false;
+    skip.disabled = true;
+  }
+}
+
+function runOptionsBody() {
+  syncRunOptionChecks();
+  return {
+    skip_existing: Boolean($("#run-skip-existing")?.checked),
+    regenerate_if_stale: Boolean($("#run-regenerate-stale")?.checked),
+    force: Boolean($("#run-force")?.checked),
+  };
+}
+
+function buildRunBody() {
+  const opts = runOptionsBody();
+  if (runMode === "range") {
+    const start = $("#run-start")?.value;
+    const end = $("#run-end")?.value;
+    if (!start || !end) throw new Error("시작·종료 날짜를 선택하세요.");
+    return { start, end, ...opts };
+  }
+  if (runMode === "pick") {
+    if (!runPickDates.size) throw new Error("날짜를 하나 이상 추가하세요.");
+    return { dates: [...runPickDates], ...opts };
+  }
+  const day = $("#run-date")?.value;
+  if (!day) throw new Error("날짜를 선택하세요.");
+  return { date: day, ...opts };
+}
+
+function renderRunPlan(data) {
+  const wrap = $("#run-plan-wrap");
+  const tbody = $("#run-plan-tbody");
+  const summary = $("#run-plan-summary");
+  if (!wrap || !tbody || !summary) return;
+  const plan = data.plan || [];
+  if (!plan.length) {
+    wrap.classList.add("hidden");
+    tbody.innerHTML = "";
+    return;
+  }
+  wrap.classList.remove("hidden");
+  summary.textContent = `생성 ${data.run_count} · 건너뜀 ${data.skip_count} · 총 ${plan.length}일`;
+  tbody.innerHTML = plan
+    .map((item) => {
+      const action = PLAN_ACTION_LABEL[item.action] || item.action;
+      const reason = PLAN_REASON_LABEL[item.reason] || item.reason || "";
+      return `<tr class="run-plan-row run-plan-${item.action}">
+        <td>${escapeHtml(item.date)}</td>
+        <td>${item.has_journal ? "있음" : "없음"}</td>
+        <td>
+          <span class="run-plan-action run-plan-action-${item.action}">${escapeHtml(action)}</span>
+          ${reason ? `<span class="run-plan-reason">${escapeHtml(reason)}</span>` : ""}
+        </td>
+      </tr>`;
+    })
+    .join("");
+}
+
+const SCHEDULE_TARGET_LABEL = { yesterday: "어제", today: "오늘" };
+const SCHEDULE_STATUS_LABEL = {
+  started: "시작됨",
+  skipped: "건너뜀",
+  error: "오류",
+  busy: "실행 중",
+};
+
+async function loadSchedules() {
+  if (!state.authorized) return;
+  try {
+    const data = await api("/api/schedules");
+    renderSchedules(data.schedules || []);
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+}
+
+function renderSchedules(items) {
+  const list = $("#schedule-list");
+  if (!list) return;
+  if (!items.length) {
+    list.innerHTML = `<li class="empty">등록된 예약이 없습니다.</li>`;
+    return;
+  }
+  list.innerHTML = items
+    .map((item) => {
+      const target = SCHEDULE_TARGET_LABEL[item.target] || item.target;
+      const status = item.last_status
+        ? SCHEDULE_STATUS_LABEL[item.last_status] || item.last_status
+        : "—";
+      const last = item.last_run_at ? item.last_run_at.replace("T", " ").slice(0, 16) : "—";
+      return `<li class="schedule-item${item.enabled ? "" : " is-disabled"}">
+        <div class="schedule-item-main">
+          <strong>${escapeHtml(item.name)}</strong>
+          <span class="schedule-meta">${escapeHtml(item.time)} · ${escapeHtml(target)}</span>
+          <span class="schedule-meta">최근 ${escapeHtml(last)} · ${escapeHtml(status)}</span>
+          ${item.last_message ? `<span class="schedule-meta">${escapeHtml(item.last_message)}</span>` : ""}
+        </div>
+        <div class="schedule-item-actions">
+          <label class="run-check schedule-toggle" title="예약 사용">
+            <input type="checkbox" data-schedule-toggle="${escapeHtml(item.id)}" ${item.enabled ? "checked" : ""}>
+            사용
+          </label>
+          <button type="button" class="icon-btn danger-icon schedule-delete" data-schedule-delete="${escapeHtml(item.id)}" title="삭제" aria-label="삭제">
+            <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+          </button>
+        </div>
+      </li>`;
+    })
+    .join("");
+}
+
+function renderJobBatch(job) {
+  const batch = $("#job-batch");
+  const fill = $("#job-batch-fill");
+  const text = $("#job-batch-text");
+  if (!batch || !fill || !text) return;
+  const total = job.total || 0;
+  const showBatch = total > 1;
+  batch.classList.toggle("hidden", !showBatch);
+  if (!showBatch) return;
+  const done = job.done || 0;
+  const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  fill.style.width = `${pct}%`;
+  const current = job.date ? ` · ${job.date}` : "";
+  if (job.status === "running") {
+    text.textContent = `${done}/${total} 처리 중${current}${job.message ? ` — ${job.message}` : ""}`;
+    return;
+  }
+  text.textContent = job.message || `${done}/${total} 완료`;
+}
 
 function setRunButtonBusy(running) {
   const button = $("#run-button");
@@ -1054,6 +1299,7 @@ function renderJobSteps({ running = false, current = null, complete = false, err
 
 function renderJob(job) {
   if (!job) return;
+  renderJobBatch(job);
   const running = job.status === "running";
   setRunButtonBusy(running);
   if (running) {
@@ -1080,7 +1326,7 @@ function renderJob(job) {
 
 async function syncRunStepsForSelectedDate() {
   if (lastJobStatus === "running") return;
-  const day = $("#run-date")?.value;
+  const day = runMode === "single" ? $("#run-date")?.value : null;
   if (!day) {
     renderJobSteps({ complete: false });
     return;
@@ -1104,13 +1350,14 @@ async function pollJob() {
     return;
   }
   if (prev === "running" && job.status === "done") {
-    showBanner("일지 생성을 마쳤습니다.", "ok");
+    renderJob(job);
+    showBanner(job.message || "일지 생성을 마쳤습니다.", "ok");
     setRunButtonBusy(false);
     await syncRunStepsForSelectedDate();
     loadJournals();
     loadOverview();
   } else if (prev === "running" && job.status === "error") {
-    showBanner(job.message, "error");
+    showBanner(job.message || "일지 생성 중 오류가 발생했습니다.", "error");
     renderJob(job);
   } else {
     setRunButtonBusy(false);
@@ -1197,13 +1444,20 @@ $("#refresh-accounts")?.addEventListener("click", () => {
   loadAccounts();
 });
 
-$("#add-chat-form")?.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const id = $("#chat-id-input").value.trim();
-  if (!id) return;
-  addChat(id).then(() => {
-    $("#chat-id-input").value = "";
-  });
+function syncChatIdToggle() {
+  const btn = $("#toggle-chat-ids");
+  if (!btn) return;
+  btn.classList.toggle("is-active", state.showChatIds);
+  btn.setAttribute("aria-pressed", state.showChatIds ? "true" : "false");
+  btn.title = state.showChatIds ? "ID 숨기기" : "ID 표시";
+  btn.setAttribute("aria-label", state.showChatIds ? "ID 숨기기" : "ID 표시");
+}
+
+$("#toggle-chat-ids")?.addEventListener("click", () => {
+  state.showChatIds = !state.showChatIds;
+  syncChatIdToggle();
+  renderDialogs($("#dialog-filter")?.value);
+  loadWatched().catch((err) => showBanner(err.message, "error"));
 });
 
 $("#account-form")?.addEventListener("submit", async (event) => {
@@ -1334,12 +1588,29 @@ window.addEventListener("resize", () => {
   updateJournalScrollFade();
 });
 
+document.querySelectorAll(".run-mode-tab").forEach((btn) => {
+  btn.addEventListener("click", () => setRunMode(btn.dataset.runMode || "single"));
+});
+
+$("#run-preview-button")?.addEventListener("click", async () => {
+  try {
+    const data = await api("/api/run/plan", {
+      method: "POST",
+      body: JSON.stringify(buildRunBody()),
+    });
+    renderRunPlan(data);
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+});
+
 $("#run-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
+    const body = buildRunBody();
     const job = await api("/api/run", {
       method: "POST",
-      body: JSON.stringify({ date: $("#run-date").value || null }),
+      body: JSON.stringify(body),
     });
     lastJobStatus = "running";
     renderJob(job);
@@ -1349,12 +1620,84 @@ $("#run-form").addEventListener("submit", async (event) => {
   }
 });
 
-$("#run-date")?.addEventListener("change", () => {
-  syncRunStepsForSelectedDate();
+$("#run-pick-add")?.addEventListener("click", () => {
+  try {
+    addRunPickDate($("#run-pick-date")?.value);
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
 });
-$("#run-date")?.addEventListener("input", () => {
-  syncRunStepsForSelectedDate();
+
+$("#run-pick-list")?.addEventListener("click", (event) => {
+  const chip = event.target.closest(".run-pick-chip");
+  if (!chip?.dataset.day) return;
+  removeRunPickDate(chip.dataset.day);
 });
+
+for (const id of ["run-date", "run-start", "run-end"]) {
+  $(`#${id}`)?.addEventListener("change", () => syncRunStepsForSelectedDate());
+  $(`#${id}`)?.addEventListener("input", () => syncRunStepsForSelectedDate());
+}
+for (const id of ["run-skip-existing", "run-regenerate-stale", "run-force"]) {
+  $(`#${id}`)?.addEventListener("change", () => {
+    syncRunOptionChecks();
+    $("#run-plan-wrap")?.classList.add("hidden");
+  });
+}
+
+$("#schedule-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const name = $("#schedule-name")?.value?.trim();
+    const time = $("#schedule-time")?.value;
+    if (!name) throw new Error("예약 이름을 입력하세요.");
+    if (!time) throw new Error("실행 시각을 선택하세요.");
+    await api("/api/schedules", {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        time,
+        target: $("#schedule-target")?.value || "yesterday",
+        skip_existing: Boolean($("#schedule-skip-existing")?.checked),
+        enabled: true,
+      }),
+    });
+    $("#schedule-name").value = "";
+    showBanner("예약을 추가했습니다.", "ok");
+    loadSchedules();
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+});
+
+$("#schedule-list")?.addEventListener("click", async (event) => {
+  const deleteBtn = event.target.closest("[data-schedule-delete]");
+  if (deleteBtn?.dataset.scheduleDelete) {
+    try {
+      await api(`/api/schedules/${deleteBtn.dataset.scheduleDelete}`, { method: "DELETE" });
+      showBanner("예약을 삭제했습니다.", "ok");
+      loadSchedules();
+    } catch (err) {
+      showBanner(err.message, "error");
+    }
+    return;
+  }
+  const toggle = event.target.closest("[data-schedule-toggle]");
+  if (toggle?.dataset.scheduleToggle) {
+    try {
+      await api(`/api/schedules/${toggle.dataset.scheduleToggle}`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: toggle.checked }),
+      });
+      loadSchedules();
+    } catch (err) {
+      showBanner(err.message, "error");
+      loadSchedules();
+    }
+  }
+});
+
+syncRunOptionChecks();
 
 setAuthMode("login");
 loadOverview()
