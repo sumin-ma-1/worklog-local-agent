@@ -6,10 +6,13 @@ const state = {
   loginStage: "idle",
   authorized: false,
   authenticated: false,
+  isAdmin: false,
+  username: null,
   authMode: "login",
   journals: [],
   journalSelected: null,
   calendarMonth: null,
+  accounts: [],
 };
 
 let toastTimer = null;
@@ -84,6 +87,19 @@ function setView(name) {
   if (name === "run") {
     syncRunStepsForSelectedDate();
   }
+  if (name === "accounts") {
+    loadAccounts();
+  }
+}
+
+function applyAdminNav(isAdmin) {
+  state.isAdmin = Boolean(isAdmin);
+  document.querySelectorAll(".admin-only").forEach((el) => {
+    el.classList.toggle("hidden", !state.isAdmin);
+  });
+  if (!state.isAdmin && state.view === "accounts") {
+    setView("journals");
+  }
 }
 
 function applyAuthVisibility(authorized) {
@@ -123,6 +139,8 @@ function setAuthMode(mode) {
 
 function showAccountPanel() {
   state.authenticated = false;
+  state.username = null;
+  applyAdminNav(false);
   $("#auth-account-panel")?.classList.remove("hidden");
   $("#auth-telegram-panel")?.classList.add("hidden");
   $("#auth-footer")?.classList.remove("hidden");
@@ -177,6 +195,7 @@ function renderLoginForms(stage) {
 function applyOverviewAuth(data) {
   const tg = data.telegram || {};
   const linked = Boolean(tg.linked || tg.authorized);
+  applyAdminNav(Boolean(data.is_admin));
   if (!data.authenticated) {
     showAccountPanel();
     applyAuthVisibility(false);
@@ -215,6 +234,7 @@ async function doLogout() {
 async function loadOverview() {
   const data = await api("/api/overview");
   applyOverviewAuth(data);
+  state.username = data.user?.username || null;
   const tg = data.telegram || {};
   const userLabel = data.user?.username
     ? escapeHtml(data.user.username)
@@ -319,12 +339,32 @@ function renderJournalCalendar() {
       </button>`;
   }
 
+  const yearStart = Math.min(y - 5, today.getFullYear() - 5);
+  const yearEnd = Math.max(y + 5, today.getFullYear() + 1);
+  let yearOptions = "";
+  for (let year = yearStart; year <= yearEnd; year += 1) {
+    yearOptions += `<option value="${year}"${year === y ? " selected" : ""}>${year}년</option>`;
+  }
+  let monthOptions = "";
+  for (let month = 1; month <= 12; month += 1) {
+    monthOptions += `<option value="${month}"${month === m ? " selected" : ""}>${month}월</option>`;
+  }
+
   root.innerHTML = `
     <div class="cal-head">
       <button type="button" class="icon-btn" id="cal-prev" title="이전 달" aria-label="이전 달">
         <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
       </button>
-      <div class="cal-title">${y}년 ${m}월</div>
+      <div class="cal-title">
+        <label class="cal-picker">
+          <span class="field-label">년도</span>
+          <select id="cal-year" aria-label="년도 선택">${yearOptions}</select>
+        </label>
+        <label class="cal-picker">
+          <span class="field-label">월</span>
+          <select id="cal-month" aria-label="월 선택">${monthOptions}</select>
+        </label>
+      </div>
       <button type="button" class="icon-btn" id="cal-next" title="다음 달" aria-label="다음 달">
         <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
       </button>
@@ -351,6 +391,18 @@ function renderJournalCalendar() {
       cy += 1;
     }
     state.calendarMonth = { y: cy, m: cm };
+    renderJournalCalendar();
+  });
+  $("#cal-year")?.addEventListener("change", (event) => {
+    const nextY = Number(event.target.value);
+    if (!Number.isFinite(nextY)) return;
+    state.calendarMonth = { y: nextY, m: state.calendarMonth.m };
+    renderJournalCalendar();
+  });
+  $("#cal-month")?.addEventListener("change", (event) => {
+    const nextM = Number(event.target.value);
+    if (!Number.isFinite(nextM) || nextM < 1 || nextM > 12) return;
+    state.calendarMonth = { y: state.calendarMonth.y, m: nextM };
     renderJournalCalendar();
   });
   root.querySelectorAll("button.cal-day").forEach((btn) => {
@@ -507,6 +559,73 @@ async function deleteJournal(day) {
     await loadJournals();
     await loadOverview();
     await syncRunStepsForSelectedDate();
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+}
+
+function formatAccountDate(value) {
+  if (!value) return "-";
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(String(value));
+  if (match) return `${match[1]} ${match[2]}:${match[3]}`;
+  const dayOnly = /^(\d{4}-\d{2}-\d{2})/.exec(String(value));
+  return dayOnly ? dayOnly[1] : String(value);
+}
+
+function renderAccounts(users) {
+  const body = $("#accounts-tbody");
+  if (!body) return;
+  state.accounts = users || [];
+  if (!state.accounts.length) {
+    body.innerHTML = `<tr><td colspan="6" class="empty">가입된 계정이 없습니다.</td></tr>`;
+    return;
+  }
+  body.innerHTML = state.accounts
+    .map((user) => {
+      const self = state.username && user.username === state.username;
+      const linked = user.telegram_linked ? "연동" : "미연동";
+      const journals = Number.isFinite(Number(user.journal_count)) ? String(user.journal_count) : "0";
+      const action = self
+        ? `<span class="meta">본인</span>`
+        : `<button type="button" class="danger icon-action" data-delete-user="${escapeHtml(user.id)}" title="삭제" aria-label="삭제"><span class="material-symbols-outlined" aria-hidden="true">delete</span></button>`;
+      return `
+        <tr>
+          <td><strong>${escapeHtml(user.username || "")}</strong></td>
+          <td>${escapeHtml(formatAccountDate(user.created_at))}</td>
+          <td>${escapeHtml(formatAccountDate(user.last_seen))}</td>
+          <td>${escapeHtml(journals)}</td>
+          <td>${linked}</td>
+          <td class="accounts-actions">${action}</td>
+        </tr>`;
+    })
+    .join("");
+  body.querySelectorAll("[data-delete-user]").forEach((btn) => {
+    btn.addEventListener("click", () => deleteAccount(btn.dataset.deleteUser));
+  });
+}
+
+async function loadAccounts() {
+  if (!state.isAdmin) return;
+  const body = $("#accounts-tbody");
+  if (body) body.innerHTML = `<tr><td colspan="6" class="empty">불러오는 중…</td></tr>`;
+  try {
+    const data = await api("/api/admin/users");
+    renderAccounts(data.users || []);
+  } catch (err) {
+    if (body) body.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(err.message)}</td></tr>`;
+    showBanner(err.message, "error");
+  }
+}
+
+async function deleteAccount(userId) {
+  if (!userId || !state.isAdmin) return;
+  const user = state.accounts.find((item) => String(item.id) === String(userId));
+  const label = user?.username || userId;
+  if (!window.confirm(`계정 "${label}" 을(를) 삭제할까요? 데이터도 함께 삭제됩니다.`)) return;
+  try {
+    await api(`/api/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
+    showBanner(`계정 ${label} 을(를) 삭제했습니다.`, "ok");
+    await loadAccounts();
   } catch (err) {
     showBanner(err.message, "error");
   }
@@ -808,7 +927,12 @@ document.querySelectorAll(".nav-btn[data-view]").forEach((btn) => {
     }
     if (btn.dataset.view === "journals") loadJournals();
     if (btn.dataset.view === "run") pollJob();
+    if (btn.dataset.view === "accounts") loadAccounts();
   });
+});
+
+$("#refresh-accounts")?.addEventListener("click", () => {
+  loadAccounts();
 });
 
 $("#add-chat-form")?.addEventListener("submit", (event) => {

@@ -590,9 +590,37 @@ main {
 }
 
 .cal-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   font-size: 15px;
   font-weight: 600;
   color: var(--ink);
+}
+
+.cal-picker {
+  display: inline-flex;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.cal-picker select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.cal-picker select:focus {
+  outline: 2px solid #93c5fd;
+  border-color: #60a5fa;
 }
 
 .cal-weekdays {
@@ -1446,4 +1474,44 @@ body.share-mode {
 
 .share-panel .journal-attach {
   margin-top: 18px;
+}
+
+.accounts-panel {
+  min-height: 0;
+}
+
+.accounts-table-wrap {
+  overflow: auto;
+  margin-top: 8px;
+}
+
+.accounts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.accounts-table th,
+.accounts-table td {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.accounts-table th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.accounts-table td.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 24px 8px;
+}
+
+.accounts-actions {
+  width: 48px;
+  text-align: right;
 }

@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from worklog_agent.accounts import AccountError, AccountStore
+from worklog_agent.accounts import AccountError, AccountStore, is_admin_username
 from worklog_agent.config import (
     AppConfig,
     chat_ref_key,
@@ -37,6 +37,7 @@ from worklog_agent.telegram_auth import (
 from worklog_agent.users import (
     add_user_chat,
     create_share_token,
+    delete_user_data,
     ensure_user_root,
     find_share,
     load_user_telegram,
@@ -47,6 +48,7 @@ from worklog_agent.users import (
     share_for_day,
     telegram_linked,
     user_config,
+    user_root,
 )
 from worklog_agent.web.auth_session import COOKIE_USER, SessionStore
 
@@ -259,6 +261,12 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=403, detail="telegram_required")
         return user_id, cfg
 
+    def require_admin(request: Request) -> tuple[str, dict]:
+        user_id, account = require_account(request)
+        if not is_admin_username(str(account.get("username") or "")):
+            raise HTTPException(status_code=403, detail="관리자만 접근할 수 있습니다.")
+        return user_id, account
+
     def me_payload(user_id: str, account: dict) -> dict:
         state.reload()
         root = ensure_user_root(state.config.data_root, user_id)
@@ -266,6 +274,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         linked = telegram_linked(root, state.config.telegram.session_name)
         return {
             "user": state.accounts.public_user(account),
+            "is_admin": is_admin_username(str(account.get("username") or "")),
             "telegram": {
                 "linked": linked,
                 "phone": meta.get("phone"),
@@ -421,6 +430,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             return {
                 **base,
                 "authenticated": False,
+                "is_admin": False,
                 "chat_count": 0,
                 "journal_count": 0,
                 "job": JobState().__dict__,
@@ -441,6 +451,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             return {
                 **base,
                 "authenticated": False,
+                "is_admin": False,
                 "chat_count": 0,
                 "journal_count": 0,
                 "job": JobState().__dict__,
@@ -502,6 +513,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         return {
             **base,
             "authenticated": True,
+            "is_admin": is_admin_username(str(account.get("username") or "")),
             "chat_count": len(cfg.telegram.chats) if linked else 0,
             "journal_count": len(storage.list_journal_dates()) if linked else 0,
             "job": state.runtime_for(user_id).snapshot_job() if linked else JobState().__dict__,
@@ -509,6 +521,47 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             "telegram": telegram,
             "login_stage": "authorized" if linked else login.stage,
         }
+
+    @app.get("/api/admin/users")
+    async def admin_list_users(request: Request) -> dict:
+        require_admin(request)
+        state.reload()
+        session_name = state.config.telegram.session_name
+        last_seen = state.sessions.latest_seen_by_user()
+        users = []
+        for user in state.accounts.list_public():
+            root = user_root(state.config.data_root, user["id"])
+            journal_count = 0
+            if root.is_dir():
+                journal_count = len(Storage(root).list_journal_dates())
+            users.append(
+                {
+                    **user,
+                    "telegram_linked": telegram_linked(root, session_name),
+                    "last_seen": last_seen.get(str(user["id"])),
+                    "journal_count": journal_count,
+                }
+            )
+        return {"users": users}
+
+    @app.delete("/api/admin/users/{user_id}")
+    async def admin_delete_user(request: Request, user_id: str) -> dict:
+        admin_id, _ = require_admin(request)
+        target = str(user_id)
+        if target == str(admin_id):
+            raise HTTPException(status_code=400, detail="자신의 계정은 삭제할 수 없습니다.")
+        state.reload()
+        account = state.accounts.get(target)
+        if not account:
+            raise HTTPException(status_code=404, detail="계정을 찾을 수 없습니다.")
+        if not state.accounts.delete(target):
+            raise HTTPException(status_code=404, detail="계정을 찾을 수 없습니다.")
+        state.sessions.clear_user(target)
+        with state.runtimes_lock:
+            state.runtimes.pop(target, None)
+        state.clear_login(target)
+        delete_user_data(state.config.data_root, target)
+        return {"ok": True, "id": target}
 
     @app.get("/api/telegram/status")
     async def telegram_status(request: Request) -> dict:

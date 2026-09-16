@@ -39,6 +39,14 @@ def ensure_user_root(data_root: Path, user_id: int | str) -> Path:
     return root
 
 
+def delete_user_data(data_root: Path, user_id: int | str) -> bool:
+    root = user_root(data_root, user_id)
+    if not root.exists():
+        return False
+    shutil.rmtree(root, ignore_errors=True)
+    return not root.exists()
+
+
 def _read_json(path: Path, default: Any) -> Any:
     if not path.is_file():
         return default

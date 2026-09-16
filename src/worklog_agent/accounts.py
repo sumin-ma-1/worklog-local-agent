@@ -12,6 +12,13 @@ import bcrypt
 
 _USERNAME_RE = re.compile(r"^[a-z0-9_]{3,32}$")
 _MIN_PASSWORD = 8
+_ADMIN_USERNAMES = frozenset({"devsm"})
+
+
+def is_admin_username(username: str | None) -> bool:
+    if not username:
+        return False
+    return AccountStore.normalize_username(username) in _ADMIN_USERNAMES
 
 
 class AccountError(ValueError):
@@ -106,6 +113,23 @@ class AccountStore:
         if not user or not self._check_password(password, str(user.get("password_hash") or "")):
             raise AccountError("아이디 또는 비밀번호가 올바르지 않습니다.")
         return {"id": user["id"], "username": user["username"], "created_at": user.get("created_at")}
+
+    def list_public(self) -> list[dict[str, Any]]:
+        with self._lock:
+            users = [self.public_user(user) for user in self._load()["users"]]
+        users.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+        return users
+
+    def delete(self, user_id: str) -> bool:
+        target = str(user_id)
+        with self._lock:
+            data = self._load()
+            keep = [user for user in data["users"] if str(user.get("id")) != target]
+            if len(keep) == len(data["users"]):
+                return False
+            data["users"] = keep
+            self._save(data)
+            return True
 
     def public_user(self, user: dict[str, Any]) -> dict[str, Any]:
         return {

@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from worklog_agent.accounts import AccountError, AccountStore
+from worklog_agent.accounts import AccountError, AccountStore, is_admin_username
 from worklog_agent.users import (
     create_share_token,
+    delete_user_data,
     find_share,
     has_legacy_layout,
     load_user_chats,
@@ -25,6 +26,24 @@ def test_account_register_and_login(tmp_path: Path) -> None:
         assert False, "expected failure"
     except AccountError:
         pass
+
+
+def test_account_list_delete_and_admin_flag(tmp_path: Path) -> None:
+    store = AccountStore(tmp_path)
+    a = store.register("alice", "password1")
+    store.register("bob", "password1")
+    assert is_admin_username("devsm") is True
+    assert is_admin_username("alice") is False
+    public = store.list_public()
+    assert {u["username"] for u in public} == {"alice", "bob"}
+    assert all("password_hash" not in u for u in public)
+    root = user_root(tmp_path, a["id"])
+    root.mkdir(parents=True)
+    (root / "marker.txt").write_text("x", encoding="utf-8")
+    assert store.delete(a["id"]) is True
+    assert store.get(a["id"]) is None
+    assert delete_user_data(tmp_path, a["id"]) is True
+    assert not root.exists()
 
 
 def test_migrate_legacy_layout(tmp_path: Path) -> None:

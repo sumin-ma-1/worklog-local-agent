@@ -76,6 +76,8 @@ def test_home_has_account_login(tmp_path: Path) -> None:
     assert "api-id-input" not in home.text
     assert "password-confirm-input" in home.text
     assert "login-phone-input" in home.text
+    assert 'data-view="accounts"' in home.text
+    assert 'id="view-accounts"' in home.text
 
 
 def test_register_login_and_telegram_required(tmp_path: Path) -> None:
@@ -206,3 +208,51 @@ def test_share_link_is_public(tmp_path: Path) -> None:
     assert "공유본" in guest.get(f"/api/share/{token}").json()["markdown"]
     assert guest.get("/api/journals/2026-08-01").status_code == 401
     assert (user_root(state.config.data_root, user_id) / "journals" / "2026-08-01.md").is_file()
+
+
+def test_admin_users_api(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
+    _write_env(tmp_path / ".env")
+    app = create_app(config_path)
+    admin = TestClient(app)
+    other = TestClient(app)
+
+    admin_data = _register(admin, "devsm", "password1")
+    other_data = _register(other, "member1", "password1")
+    _link_session(app.state.dashboard, admin_data["user"]["id"])
+    _link_session(app.state.dashboard, other_data["user"]["id"])
+
+    forbidden = other.get("/api/admin/users")
+    assert forbidden.status_code == 403
+
+    listed = admin.get("/api/admin/users")
+    assert listed.status_code == 200
+    users = listed.json()["users"]
+    usernames = {item["username"] for item in users}
+    assert usernames == {"devsm", "member1"}
+    assert all("password_hash" not in item for item in users)
+    member = next(item for item in users if item["username"] == "member1")
+    assert member["telegram_linked"] is True
+    assert member["journal_count"] == 0
+    assert member["last_seen"]
+
+    overview = admin.get("/api/overview").json()
+    assert overview["is_admin"] is True
+    assert other.get("/api/overview").json()["is_admin"] is False
+
+    assert other.put("/api/journals/2026-03-01", json={"markdown": "# m"}).status_code == 200
+    member_after = next(
+        item for item in admin.get("/api/admin/users").json()["users"] if item["username"] == "member1"
+    )
+    assert member_after["journal_count"] == 1
+    assert member_after["last_seen"]
+    self_delete = admin.delete(f"/api/admin/users/{admin_data['user']['id']}")
+    assert self_delete.status_code == 400
+
+    deleted = admin.delete(f"/api/admin/users/{other_data['user']['id']}")
+    assert deleted.status_code == 200
+    assert deleted.json()["ok"] is True
+    remaining = {item["username"] for item in admin.get("/api/admin/users").json()["users"]}
+    assert remaining == {"devsm"}
+    assert not user_root(app.state.dashboard.config.data_root, other_data["user"]["id"]).exists()
+    assert other.get("/api/journals").status_code == 401

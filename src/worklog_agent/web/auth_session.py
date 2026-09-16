@@ -33,12 +33,14 @@ class SessionStore:
 
     def create(self, user_id: int | str, *, name: str | None = None) -> str:
         token = secrets.token_urlsafe(32)
+        now = datetime.now(timezone.utc).isoformat()
         with self._lock:
             data = self._load()
             data[token] = {
                 "user_id": str(user_id),
                 "name": name,
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": now,
+                "last_seen": now,
             }
             self._save(data)
         return token
@@ -49,7 +51,13 @@ class SessionStore:
         with self._lock:
             data = self._load()
             meta = data.get(token)
-            return dict(meta) if meta else None
+            if not meta:
+                return None
+            updated = dict(meta)
+            updated["last_seen"] = datetime.now(timezone.utc).isoformat()
+            data[token] = updated
+            self._save(data)
+            return updated
 
     def clear(self, token: str | None) -> None:
         if not token:
@@ -67,3 +75,18 @@ class SessionStore:
             keep = {tok: meta for tok, meta in data.items() if str(meta.get("user_id")) != key}
             if len(keep) != len(data):
                 self._save(keep)
+
+    def latest_seen_by_user(self) -> dict[str, str]:
+        latest: dict[str, str] = {}
+        with self._lock:
+            for meta in self._load().values():
+                if not isinstance(meta, dict):
+                    continue
+                user_id = str(meta.get("user_id") or "")
+                seen = str(meta.get("last_seen") or meta.get("created_at") or "")
+                if not user_id or not seen:
+                    continue
+                prev = latest.get(user_id)
+                if prev is None or seen > prev:
+                    latest[user_id] = seen
+        return latest
