@@ -1170,6 +1170,10 @@ function buildRunBody() {
   return { date: day, ...opts };
 }
 
+function updateRunPlanScrollFade() {
+  updateScrollFade($("#run-plan-scroll"), $("#run-plan-scroll-wrap"));
+}
+
 function renderRunPlan(data) {
   const wrap = $("#run-plan-wrap");
   const tbody = $("#run-plan-tbody");
@@ -1179,6 +1183,7 @@ function renderRunPlan(data) {
   if (!plan.length) {
     wrap.classList.add("hidden");
     tbody.innerHTML = "";
+    updateRunPlanScrollFade();
     return;
   }
   wrap.classList.remove("hidden");
@@ -1197,6 +1202,7 @@ function renderRunPlan(data) {
       </tr>`;
     })
     .join("");
+  requestAnimationFrame(updateRunPlanScrollFade);
 }
 
 const SCHEDULE_TARGET_LABEL = { yesterday: "어제", today: "오늘" };
@@ -1582,10 +1588,12 @@ initSidebarToggle();
 $("#refresh-dialogs").addEventListener("click", loadDialogs);
 $("#dialog-filter").addEventListener("input", (event) => renderDialogs(event.target.value));
 $("#dialog-scroll")?.addEventListener("scroll", updateDialogScrollFade, { passive: true });
+$("#run-plan-scroll")?.addEventListener("scroll", updateRunPlanScrollFade, { passive: true });
 $("#journal-list-scroll")?.addEventListener("scroll", updateJournalScrollFade, { passive: true });
 window.addEventListener("resize", () => {
   updateDialogScrollFade();
   updateJournalScrollFade();
+  updateRunPlanScrollFade();
 });
 
 document.querySelectorAll(".run-mode-tab").forEach((btn) => {

@@ -1618,10 +1618,44 @@ button[type="submit"]:disabled,
 }
 
 .run-plan-table-wrap {
+  position: relative;
   max-height: 220px;
-  overflow: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.run-plan-table-scroll {
+  max-height: 220px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.run-plan-table-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.run-plan-table-wrap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 44px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  border-radius: 0 0 8px 8px;
+}
+
+.run-plan-table-wrap.has-more::after {
+  opacity: 1;
 }
 
 .run-plan-table {
