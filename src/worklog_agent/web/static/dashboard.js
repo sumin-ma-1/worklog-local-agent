@@ -15,6 +15,10 @@ const state = {
   explorerOpen: {},
   accounts: [],
   showChatIds: false,
+  watchedChats: [],
+  watchedEditMode: false,
+  watchedFilter: "",
+  watchedSelected: {},
 };
 
 let toastTimer = null;
@@ -1004,35 +1008,155 @@ async function deleteAccount(userId) {
   }
 }
 
-async function loadWatched() {
-  const data = await api("/api/chats");
+function syncWatchedEditUi() {
+  const editing = state.watchedEditMode;
+  document.body.classList.toggle("watched-editing", editing);
+  $("#watched-search-wrap")?.classList.toggle("hidden", !editing);
+  $("#watched-select-all")?.classList.toggle("hidden", !editing);
+  $("#watched-delete-selected")?.classList.toggle("hidden", !editing);
+  const editBtn = $("#watched-edit");
+  if (editBtn) {
+    editBtn.title = editing ? "완료" : "수정";
+    editBtn.setAttribute("aria-label", editing ? "완료" : "수정");
+    editBtn.classList.toggle("is-active", editing);
+    const icon = editBtn.querySelector(".material-symbols-outlined");
+    if (icon) icon.textContent = editing ? "check" : "edit";
+  }
+  updateWatchedSelectionUi();
+}
+
+function updateWatchedSelectionUi() {
+  const selectedCount = Object.keys(state.watchedSelected).length;
+  const deleteBtn = $("#watched-delete-selected");
+  if (deleteBtn) {
+    deleteBtn.disabled = selectedCount === 0;
+    deleteBtn.title = selectedCount ? `선택 ${selectedCount}개 삭제` : "선택 삭제";
+  }
+}
+
+function filteredWatchedChats() {
+  const q = (state.watchedFilter || "").trim().toLowerCase();
+  return (state.watchedChats || []).filter((chat) => {
+    if (!q) return true;
+    return `${chat.title || ""} ${chat.id}`.toLowerCase().includes(q);
+  });
+}
+
+function renderWatched() {
   const list = $("#watched-list");
-  if (!data.chats.length) {
+  if (!list) return;
+  const chats = state.watchedChats || [];
+  if (!chats.length) {
+    if (state.watchedEditMode) {
+      state.watchedEditMode = false;
+      state.watchedSelected = {};
+      state.watchedFilter = "";
+      const filter = $("#watched-filter");
+      if (filter) filter.value = "";
+      syncWatchedEditUi();
+    }
     list.innerHTML = panelEmptyHtml({
       src: "/static/worklog-coll.png",
       title: "등록된 업무방 없음",
       hint: "참여 대화 목록에서 대화를 추가하세요.",
       size: 140,
     });
+    updateWatchedScrollFade();
     return;
   }
-  list.innerHTML = data.chats
-    .map(
-      (chat) => `
-      <li>
-        <div>
-          <strong>${escapeHtml(String(chat.title))}</strong>
-          ${state.showChatIds ? `<span class="meta">${escapeHtml(String(chat.id))}</span>` : ""}
-        </div>
-        <button class="danger icon-action" data-id="${escapeHtml(String(chat.id))}" title="삭제" aria-label="삭제">
-          <span class="material-symbols-outlined" aria-hidden="true">delete</span>
-        </button>
-      </li>`
-    )
+
+  const rows = filteredWatchedChats();
+  if (!rows.length) {
+    list.innerHTML = `<li class="empty">표시할 업무방이 없습니다.</li>`;
+    updateWatchedScrollFade();
+    return;
+  }
+
+  const editing = state.watchedEditMode;
+  list.innerHTML = rows
+    .map((chat) => {
+      const id = String(chat.id);
+      const checked = Boolean(state.watchedSelected[id]);
+      const select = editing
+        ? `<label class="watched-check">
+            <input type="checkbox" data-watched-check="${escapeHtml(id)}" ${checked ? "checked" : ""}>
+          </label>`
+        : "";
+      const action = editing
+        ? ""
+        : `<button class="danger icon-action" data-id="${escapeHtml(id)}" title="삭제" aria-label="삭제">
+            <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+          </button>`;
+      return `
+        <li class="watched-item${editing ? " is-editing" : ""}${checked ? " is-selected" : ""}">
+          ${select}
+          <div class="watched-item-main">
+            <strong>${escapeHtml(String(chat.title))}</strong>
+            ${state.showChatIds ? `<span class="meta">${escapeHtml(id)}</span>` : ""}
+          </div>
+          ${action}
+        </li>`;
+    })
     .join("");
-  list.querySelectorAll("button.danger").forEach((btn) => {
-    btn.addEventListener("click", () => removeChat(btn.dataset.id));
-  });
+
+  if (editing) {
+    list.querySelectorAll("[data-watched-check]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const id = input.dataset.watchedCheck;
+        if (!id) return;
+        if (input.checked) state.watchedSelected[id] = true;
+        else delete state.watchedSelected[id];
+        input.closest(".watched-item")?.classList.toggle("is-selected", input.checked);
+        updateWatchedSelectionUi();
+      });
+    });
+  } else {
+    list.querySelectorAll("button.danger").forEach((btn) => {
+      btn.addEventListener("click", () => removeChat(btn.dataset.id));
+    });
+  }
+  updateWatchedSelectionUi();
+  updateWatchedScrollFade();
+}
+
+function updateWatchedScrollFade() {
+  updateScrollFade($("#watched-scroll"), $("#watched-scroll-wrap"));
+}
+
+async function loadWatched() {
+  const data = await api("/api/chats");
+  state.watchedChats = data.chats || [];
+  const valid = new Set(state.watchedChats.map((chat) => String(chat.id)));
+  state.watchedSelected = Object.fromEntries(
+    Object.keys(state.watchedSelected)
+      .filter((id) => valid.has(id))
+      .map((id) => [id, true])
+  );
+  renderWatched();
+}
+
+async function removeSelectedWatched() {
+  const ids = Object.keys(state.watchedSelected);
+  if (!ids.length) return;
+  if (!window.confirm(`선택한 업무방 ${ids.length}개를 삭제할까요?`)) return;
+  try {
+    for (const id of ids) {
+      await api("/api/chats/delete", { method: "POST", body: JSON.stringify({ id }) });
+    }
+    showBanner(`업무방 ${ids.length}개를 삭제했습니다.`, "ok");
+    state.watchedSelected = {};
+    await Promise.all([loadWatched(), loadOverview()]);
+    if (state.dialogs.length) {
+      const removed = new Set(ids.map(String));
+      state.dialogs = state.dialogs.map((item) =>
+        removed.has(String(item.id)) ? { ...item, watched: false } : item
+      );
+      renderDialogs($("#dialog-filter")?.value);
+    }
+  } catch (err) {
+    showBanner(err.message, "error");
+    await loadWatched();
+  }
 }
 
 function updateScrollFade(scroll, wrap) {
@@ -1557,7 +1681,43 @@ $("#toggle-chat-ids")?.addEventListener("click", () => {
   state.showChatIds = !state.showChatIds;
   syncChatIdToggle();
   renderDialogs($("#dialog-filter")?.value);
-  loadWatched().catch((err) => showBanner(err.message, "error"));
+  renderWatched();
+});
+
+$("#watched-edit")?.addEventListener("click", () => {
+  state.watchedEditMode = !state.watchedEditMode;
+  if (!state.watchedEditMode) {
+    state.watchedSelected = {};
+    state.watchedFilter = "";
+    const filter = $("#watched-filter");
+    if (filter) filter.value = "";
+  }
+  syncWatchedEditUi();
+  renderWatched();
+});
+
+$("#watched-select-all")?.addEventListener("click", () => {
+  if (!state.watchedEditMode) return;
+  const rows = filteredWatchedChats();
+  const ids = rows.map((chat) => String(chat.id));
+  const allSelected = ids.length > 0 && ids.every((id) => state.watchedSelected[id]);
+  if (allSelected) {
+    ids.forEach((id) => delete state.watchedSelected[id]);
+  } else {
+    ids.forEach((id) => {
+      state.watchedSelected[id] = true;
+    });
+  }
+  renderWatched();
+});
+
+$("#watched-delete-selected")?.addEventListener("click", () => {
+  removeSelectedWatched().catch((err) => showBanner(err.message, "error"));
+});
+
+$("#watched-filter")?.addEventListener("input", (event) => {
+  state.watchedFilter = event.target.value || "";
+  renderWatched();
 });
 
 $("#account-form")?.addEventListener("submit", async (event) => {
@@ -1682,12 +1842,14 @@ initSidebarToggle();
 $("#refresh-dialogs").addEventListener("click", loadDialogs);
 $("#dialog-filter").addEventListener("input", (event) => renderDialogs(event.target.value));
 $("#dialog-scroll")?.addEventListener("scroll", updateDialogScrollFade, { passive: true });
+$("#watched-scroll")?.addEventListener("scroll", updateWatchedScrollFade, { passive: true });
 $("#run-plan-scroll")?.addEventListener("scroll", updateRunPlanScrollFade, { passive: true });
 $("#journal-list-scroll")?.addEventListener("scroll", updateJournalScrollFade, { passive: true });
 window.addEventListener("resize", () => {
   updateDialogScrollFade();
   updateJournalScrollFade();
   updateRunPlanScrollFade();
+  updateWatchedScrollFade();
 });
 
 document.querySelectorAll(".run-mode-tab").forEach((btn) => {

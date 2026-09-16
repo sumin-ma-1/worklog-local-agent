@@ -968,6 +968,8 @@ main {
   height: 100%;
 }
 
+.watched-panel .list-scroll-wrap:has(.panel-empty),
+.watched-panel .list-scroll:has(.panel-empty),
 .journal-list-panel .list-scroll-wrap:has(.panel-empty),
 .journal-list-panel .list-scroll:has(.panel-empty),
 .dialogs-panel .list-scroll-wrap:has(.panel-empty),
@@ -1065,16 +1067,62 @@ main {
   min-height: 0;
 }
 
-.watched-panel > h3 {
-  margin: 0 0 12px;
+.watched-panel > .row-head {
+  flex: 0 0 auto;
+  margin-bottom: 10px;
+}
+
+.watched-panel > .row-head h3 {
+  margin: 0;
   font-size: 17px;
   color: var(--accent);
 }
 
-.watched-panel > .list {
+.watched-panel > .search-field {
+  flex: 0 0 auto;
+}
+
+.watched-panel > .list-scroll-wrap {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+}
+
+.watched-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.watched-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.watched-item.is-editing {
+  gap: 10px;
+}
+
+.watched-item.is-selected {
+  background: #f3f7ff;
+  border-radius: 8px;
+  padding-left: 8px;
+  padding-right: 8px;
+  margin-left: -8px;
+  margin-right: -8px;
+  width: calc(100% + 16px);
+}
+
+.watched-item-main {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
 }
 
 .list {
