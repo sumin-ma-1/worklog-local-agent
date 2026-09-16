@@ -2048,11 +2048,16 @@ const SIDEBAR_KEY = "worklog.sidebarCollapsed";
 function applySidebarCollapsed(collapsed) {
   const shell = $("#app-shell");
   const toggle = $("#sidebar-toggle");
+  const brand = $("#sidebar-brand");
   if (!shell) return;
   shell.classList.toggle("sidebar-collapsed", Boolean(collapsed));
   if (toggle) {
     toggle.setAttribute("aria-label", collapsed ? "사이드바 펼치기" : "사이드바 접기");
     toggle.title = collapsed ? "사이드바 펼치기" : "사이드바 접기";
+  }
+  if (brand) {
+    brand.title = collapsed ? "사이드바 펼치기" : "일지 홈";
+    brand.setAttribute("aria-label", collapsed ? "사이드바 펼치기" : "일지 홈");
   }
   try {
     localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
@@ -2078,12 +2083,19 @@ function initSidebarToggle() {
 function bindSidebarBrand() {
   const brand = $("#sidebar-brand");
   if (!brand) return;
-  const go = () => goJournalHome();
-  brand.addEventListener("click", go);
+  const activate = () => {
+    const collapsed = $("#app-shell")?.classList.contains("sidebar-collapsed");
+    if (collapsed) {
+      applySidebarCollapsed(false);
+      return;
+    }
+    goJournalHome();
+  };
+  brand.addEventListener("click", activate);
   brand.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      go();
+      activate();
     }
   });
 }

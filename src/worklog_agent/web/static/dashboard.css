@@ -1676,15 +1676,10 @@ button[type="submit"]:disabled,
   align-content: start;
   align-items: start;
   max-width: 560px;
+  width: 100%;
+  margin-inline: auto;
   grid-template-columns: minmax(0, 1fr);
   overflow: visible;
-}
-
-@media (min-width: 1200px) {
-  #view-run {
-    max-width: 1100px;
-    grid-template-columns: minmax(0, 560px) minmax(280px, 1fr);
-  }
 }
 
 .run-pick-add {
