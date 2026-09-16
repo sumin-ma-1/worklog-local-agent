@@ -25,6 +25,7 @@ const state = {
   journalSectionsDraft: [],
   timezone: "Asia/Seoul",
   model: "",
+  defaultModel: "gemma4:e4b",
   models: [],
   today: null,
   chatCount: 0,
@@ -262,6 +263,7 @@ async function loadOverview() {
   state.username = data.user?.username || null;
   state.timezone = data.timezone || state.timezone || "Asia/Seoul";
   state.model = data.model || state.model || "";
+  if (data.default_model) state.defaultModel = data.default_model;
   state.today = data.today || state.today;
   state.chatCount = data.chat_count || 0;
   state.journalCount = data.journal_count || 0;
@@ -333,15 +335,23 @@ function timezoneOptions(current) {
   return values;
 }
 
+function modelLabelHtml(name) {
+  const text = escapeHtml(name || "—");
+  if (name && state.defaultModel && name === state.defaultModel) {
+    return `<span class="model-default-chip">추천</span><span class="model-name">${text}</span>`;
+  }
+  return `<span class="model-name">${text}</span>`;
+}
+
 function renderMenuOptions(menu, values, selected, attr) {
   if (!menu) return;
   menu.innerHTML = values
-    .map(
-      (value) =>
-        `<button type="button" class="settings-menu-item" role="option" data-${attr}="${escapeHtml(value)}" aria-selected="${
-          value === selected ? "true" : "false"
-        }"><span>${escapeHtml(value)}</span><span class="material-symbols-outlined settings-check" aria-hidden="true">check</span></button>`
-    )
+    .map((value) => {
+      const label = attr === "model" ? modelLabelHtml(value) : escapeHtml(value);
+      return `<button type="button" class="settings-menu-item" role="option" data-${attr}="${escapeHtml(value)}" aria-selected="${
+        value === selected ? "true" : "false"
+      }"><span class="settings-menu-item-label">${label}</span><span class="material-symbols-outlined settings-check" aria-hidden="true">check</span></button>`;
+    })
     .join("");
 }
 
@@ -351,7 +361,8 @@ function syncRunPreferenceSummaries() {
   if ($("#run-timezone")) $("#run-timezone").value = tz;
   if ($("#run-model")) $("#run-model").value = state.model || "";
   if ($("#run-timezone-summary")) $("#run-timezone-summary").textContent = tz;
-  if ($("#run-model-summary")) $("#run-model-summary").textContent = model;
+  const modelSummary = $("#run-model-summary");
+  if (modelSummary) modelSummary.innerHTML = modelLabelHtml(model);
   renderMenuOptions($("#run-timezone-menu"), timezoneOptions(tz), tz, "timezone");
   const models = state.models?.length ? state.models : state.model ? [state.model] : [];
   renderMenuOptions($("#run-model-menu"), models, state.model, "model");
@@ -379,6 +390,10 @@ async function loadRunPreferences() {
     state.model = prefs.model || models.current || state.model;
     state.today = prefs.today || state.today;
     state.models = models.models || [];
+    if (models.default) state.defaultModel = models.default;
+    if (state.defaultModel && !state.models.includes(state.defaultModel)) {
+      state.models = [state.defaultModel, ...state.models];
+    }
     if (state.model && !state.models.includes(state.model)) {
       state.models = [state.model, ...state.models];
     }

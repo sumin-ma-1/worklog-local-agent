@@ -578,6 +578,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         return {
             "timezone": cfg.timezone,
             "model": cfg.journal.ollama.model,
+            "default_model": state.config.journal.ollama.model,
             "today": _today(cfg),
             "api_ready": _api_ready(state.config),
             "authenticated": True,
@@ -603,7 +604,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             models = [current] if current else []
         if current and current not in models:
             models = [current, *models]
-        return {"models": models, "current": current}
+        return {"models": models, "current": current, "default": state.config.journal.ollama.model}
 
     @app.get("/api/preferences")
     async def get_preferences(request: Request) -> dict:
@@ -614,6 +615,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         return {
             "timezone": cfg.timezone,
             "model": cfg.journal.ollama.model,
+            "default_model": state.config.journal.ollama.model,
             "today": _today(cfg),
             "saved": {
                 "timezone": prefs.get("timezone"),

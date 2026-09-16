@@ -1822,13 +1822,63 @@ button[type="submit"]:disabled,
 }
 
 .settings-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
   color: var(--muted);
   font-size: 14px;
   font-weight: 400;
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 12rem;
+  max-width: 14rem;
+}
+
+.settings-menu-item-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.model-default-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #fff4cc;
+  color: #9a6b00;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  box-sizing: border-box;
+}
+
+.model-name {
+  display: inline-block;
+  min-width: 0;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-menu-item[aria-selected="true"] .model-default-chip,
+.settings-menu-item:hover .model-default-chip,
+.settings-menu-item:focus-visible .model-default-chip {
+  background: rgba(255, 255, 255, 0.22);
+  color: inherit;
+}
+
+.settings-menu-item[aria-selected="true"]:not(:hover):not(:focus-visible) .model-default-chip {
+  background: #ffe9a8;
+  color: #9a6b00;
 }
 
 .settings-icon,
@@ -1873,7 +1923,7 @@ button[type="submit"]:disabled,
 .settings-menu-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 16px;
   width: 100%;
   margin: 0;
@@ -1884,6 +1934,7 @@ button[type="submit"]:disabled,
   font: inherit;
   font-size: 14px;
   font-weight: 400;
+  line-height: 1.35;
   text-align: left;
   cursor: pointer;
   box-sizing: border-box;
