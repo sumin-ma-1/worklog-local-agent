@@ -141,6 +141,9 @@ function setAuthMode(mode) {
 function showAccountPanel() {
   state.authenticated = false;
   state.username = null;
+  state.journalSelected = null;
+  state.calendarMonth = null;
+  state.explorerOpen = {};
   applyAdminNav(false);
   $("#auth-account-panel")?.classList.remove("hidden");
   $("#auth-telegram-panel")?.classList.add("hidden");
@@ -274,11 +277,6 @@ function ensureCalendarMonth() {
     state.calendarMonth = { y: selected.y, m: selected.m };
     return;
   }
-  const first = parseDay(state.journals[0]?.date);
-  if (first) {
-    state.calendarMonth = { y: first.y, m: first.m };
-    return;
-  }
   const now = new Date();
   state.calendarMonth = { y: now.getFullYear(), m: now.getMonth() + 1 };
 }
@@ -329,6 +327,59 @@ function ensureExplorerPathForDay(day) {
   setExplorerOpen(yearKey, true);
   setExplorerOpen(monthKeyId, true);
   setExplorerOpen(weekKey, true);
+}
+
+function todayDateKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate()
+  ).padStart(2, "0")}`;
+}
+
+function applyInitialJournalFocus() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const d = now.getDate();
+  const today = todayDateKey();
+  state.calendarMonth = { y, m };
+
+  const dateSet = new Set((state.journals || []).map((item) => item.date));
+  const yearKey = explorerKey("y", y);
+  const monthKeyId = explorerKey("ym", y, m);
+  const week = weekIndexInMonth(y, m, d);
+  const weekKey = explorerKey("yw", y, m, week);
+  const range = weekRangeInMonth(y, m, week);
+
+  const hasToday = dateSet.has(today);
+  const hasWeek = [...dateSet].some((date) => {
+    const parsed = parseDay(date);
+    return Boolean(
+      parsed &&
+        parsed.y === y &&
+        parsed.m === m &&
+        parsed.d >= range.start &&
+        parsed.d <= range.end
+    );
+  });
+  const hasMonth = [...dateSet].some((date) => String(date).startsWith(`${monthKey(y, m)}-`));
+  const hasYear = [...dateSet].some((date) => String(date).startsWith(`${y}-`));
+
+  if (hasToday || hasWeek || hasMonth || hasYear) {
+    setExplorerOpen(yearKey, true);
+  } else if (state.journals[0]?.date) {
+    const latest = parseDay(state.journals[0].date);
+    if (latest) setExplorerOpen(explorerKey("y", latest.y), true);
+  }
+
+  if (hasToday || hasWeek || hasMonth) {
+    setExplorerOpen(monthKeyId, true);
+  }
+  if (hasToday || hasWeek) {
+    setExplorerOpen(weekKey, true);
+  }
+
+  return hasToday ? today : null;
 }
 
 function buildJournalExplorerTree(items) {
@@ -587,19 +638,34 @@ async function loadJournals(selectDay) {
   if (!state.authorized) return;
   const data = await api("/api/journals");
   state.journals = sortJournalsDescending(data.journals || []);
-  if (selectDay) state.journalSelected = selectDay;
+  if (selectDay) {
+    state.journalSelected = selectDay;
+    ensureExplorerPathForDay(selectDay);
+  }
   if (!state.journals.length) {
+    state.calendarMonth = null;
+    ensureCalendarMonth();
     renderJournalBrowse();
-    if (!selectDay) {
+    if (!state.journalSelected) {
       $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
     }
     updateJournalScrollFade();
     return;
   }
-  if (!state.journalSelected) {
-    state.journalSelected = state.journals[0].date;
+
+  const isFirstEntry = !selectDay && !state.journalSelected && Object.keys(state.explorerOpen).length === 0;
+  if (isFirstEntry) {
+    const focusDay = applyInitialJournalFocus();
+    renderJournalBrowse();
+    updateJournalScrollFade();
+    if (focusDay) {
+      await loadJournal(focusDay);
+      return;
+    }
+    $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
+    return;
   }
-  ensureExplorerPathForDay(state.journalSelected);
+
   const selected = parseDay(state.journalSelected);
   if (selected) {
     state.calendarMonth = { y: selected.y, m: selected.m };
@@ -610,6 +676,10 @@ async function loadJournals(selectDay) {
   updateJournalScrollFade();
   if (selectDay) {
     await loadJournal(selectDay);
+    return;
+  }
+  if (!state.journalSelected) {
+    $("#journal-detail").innerHTML = `<p class="empty">왼쪽에서 날짜를 선택하세요.</p>`;
   }
 }
 
