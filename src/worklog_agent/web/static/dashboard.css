@@ -593,34 +593,66 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  font-size: 15px;
-  font-weight: 600;
+  gap: 10px;
   color: var(--ink);
 }
 
 .cal-picker {
   display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   color: inherit;
   font: inherit;
+  cursor: pointer;
 }
 
 .cal-picker select {
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  border: 1px solid #d5dbe3;
+  border-radius: 999px;
   background: #fff;
   color: var(--ink);
   font: inherit;
   font-size: 14px;
-  font-weight: 600;
-  padding: 4px 8px;
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
+  text-align-last: center;
+  padding: 6px 14px;
   cursor: pointer;
+  box-shadow: none;
+}
+
+#cal-year {
+  min-width: 4.6em;
+}
+
+#cal-month {
+  min-width: 3em;
+}
+
+.cal-picker select::-ms-expand {
+  display: none;
+}
+
+.cal-picker select:hover {
+  border-color: #b8c2d0;
 }
 
 .cal-picker select:focus {
-  outline: 2px solid #93c5fd;
-  border-color: #60a5fa;
+  outline: none;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.35);
+}
+
+.cal-unit {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
 }
 
 .cal-weekdays {

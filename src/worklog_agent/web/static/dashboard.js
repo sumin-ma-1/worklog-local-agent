@@ -343,11 +343,11 @@ function renderJournalCalendar() {
   const yearEnd = Math.max(y + 5, today.getFullYear() + 1);
   let yearOptions = "";
   for (let year = yearStart; year <= yearEnd; year += 1) {
-    yearOptions += `<option value="${year}"${year === y ? " selected" : ""}>${year}년</option>`;
+    yearOptions += `<option value="${year}"${year === y ? " selected" : ""}>${year}</option>`;
   }
   let monthOptions = "";
   for (let month = 1; month <= 12; month += 1) {
-    monthOptions += `<option value="${month}"${month === m ? " selected" : ""}>${month}월</option>`;
+    monthOptions += `<option value="${month}"${month === m ? " selected" : ""}>${month}</option>`;
   }
 
   root.innerHTML = `
@@ -357,12 +357,12 @@ function renderJournalCalendar() {
       </button>
       <div class="cal-title">
         <label class="cal-picker">
-          <span class="field-label">년도</span>
           <select id="cal-year" aria-label="년도 선택">${yearOptions}</select>
+          <span class="cal-unit" aria-hidden="true">년</span>
         </label>
         <label class="cal-picker">
-          <span class="field-label">월</span>
           <select id="cal-month" aria-label="월 선택">${monthOptions}</select>
+          <span class="cal-unit" aria-hidden="true">월</span>
         </label>
       </div>
       <button type="button" class="icon-btn" id="cal-next" title="다음 달" aria-label="다음 달">
