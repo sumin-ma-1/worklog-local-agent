@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Worklog · {{ day }}</title>
+  <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body class="share-mode">
+  <main class="share-shell">
+    <header class="share-head">
+      <img class="brand-logo" src="/static/worklog.jpg" alt="Worklog" width="36" height="36">
+      <div>
+        <div class="share-brand">Worklog</div>
+        <h1>{{ day }}</h1>
+      </div>
+    </header>
+    <article class="panel share-panel">
+      {% if has_journal and markdown %}
+      <div id="share-body" class="journal-body markdown-body"></div>
+      {% else %}
+      <p class="empty">이 날짜의 일지가 없습니다.</p>
+      {% endif %}
+      <div class="journal-attach">
+        <h3>첨부</h3>
+        <ul class="attach-list">
+          {% if attachments %}
+            {% for file in attachments %}
+            <li>
+              <a href="{{ file.href }}" target="_blank" rel="noreferrer">{{ file.name }}</a>
+            </li>
+            {% endfor %}
+          {% else %}
+            <li class="empty">첨부 없음</li>
+          {% endif %}
+        </ul>
+      </div>
+    </article>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+  <script>
+    const source = {{ markdown_json }};
+    const el = document.getElementById("share-body");
+    if (el && source) {
+      if (window.marked && typeof window.marked.parse === "function") {
+        el.innerHTML = window.marked.parse(source);
+      } else {
+        el.textContent = source;
+      }
+    }
+  </script>
+</body>
+</html>

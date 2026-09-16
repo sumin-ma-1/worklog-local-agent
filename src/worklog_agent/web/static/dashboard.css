@@ -1227,3 +1227,43 @@ button[type="submit"]:disabled,
     max-height: min(60vh, 560px);
   }
 }
+
+/* ---- public share page ---- */
+body.share-mode {
+  min-height: 100vh;
+  overflow: auto;
+  background:
+    radial-gradient(1000px 420px at 50% -10%, #dbe7ff 0%, transparent 55%),
+    var(--paper);
+}
+
+.share-shell {
+  width: min(760px, calc(100% - 32px));
+  margin: 36px auto 64px;
+}
+
+.share-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.share-brand {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.share-head h1 {
+  margin: 2px 0 0;
+  font-size: 22px;
+  color: var(--accent);
+}
+
+.share-panel {
+  min-height: 0;
+}
+
+.share-panel .journal-attach {
+  margin-top: 18px;
+}

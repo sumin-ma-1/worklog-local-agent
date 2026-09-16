@@ -80,6 +80,12 @@ async def start_login(config: AppConfig, phone: str, login: LoginSession) -> dic
             return {
                 "stage": "authorized",
                 "message": f"이미 로그인되어 있습니다: {name or me.id}",
+                "user": {
+                    "id": me.id,
+                    "name": name or (me.username or str(me.id)),
+                    "username": me.username,
+                    "phone": me.phone,
+                },
             }
         sent = await client.send_code_request(phone)
         login.phone = phone
@@ -133,7 +139,12 @@ async def submit_code(config: AppConfig, code: str, login: LoginSession) -> dict
         return {
             "stage": "authorized",
             "message": f"로그인 완료: {name or me.id}",
-            "user": {"id": me.id, "name": name or str(me.id)},
+            "user": {
+                "id": me.id,
+                "name": name or (me.username or str(me.id)),
+                "username": me.username,
+                "phone": me.phone,
+            },
         }
     finally:
         await client.disconnect()
@@ -159,7 +170,12 @@ async def submit_password(config: AppConfig, password: str, login: LoginSession)
         return {
             "stage": "authorized",
             "message": f"로그인 완료: {name or me.id}",
-            "user": {"id": me.id, "name": name or str(me.id)},
+            "user": {
+                "id": me.id,
+                "name": name or (me.username or str(me.id)),
+                "username": me.username,
+                "phone": me.phone,
+            },
         }
     finally:
         await client.disconnect()

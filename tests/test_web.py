@@ -3,7 +3,9 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
+from worklog_agent.users import ensure_user_root, user_root
 from worklog_agent.web.app import create_app
+from worklog_agent.web.auth_session import COOKIE_USER
 
 
 def _write_config(path: Path, root: Path) -> Path:
@@ -33,9 +35,22 @@ def _write_config(path: Path, root: Path) -> Path:
     return path
 
 
-def test_dashboard_add_and_delete_chat(tmp_path: Path) -> None:
+def _authed_client(tmp_path: Path, *, user_id: int = 1001):
     config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
-    client = TestClient(create_app(config_path))
+    app = create_app(config_path)
+    state = app.state.dashboard
+    root = ensure_user_root(state.config.data_root, user_id)
+    sessions = root / "sessions"
+    sessions.mkdir(parents=True, exist_ok=True)
+    (sessions / "worklog.session").write_bytes(b"test-session")
+    token = state.sessions.create(user_id, name="Tester")
+    client = TestClient(app)
+    client.cookies.set(COOKIE_USER, token)
+    return client, state, user_id
+
+
+def test_dashboard_add_and_delete_chat(tmp_path: Path) -> None:
+    client, _, _ = _authed_client(tmp_path)
     home = client.get("/")
     assert home.status_code == 200
     assert "업무방" in home.text
@@ -57,10 +72,16 @@ def test_dashboard_add_and_delete_chat(tmp_path: Path) -> None:
     assert removed.json()["chats"] == []
 
 
-def test_dialogs_mark_watched(tmp_path: Path) -> None:
+def test_api_requires_login(tmp_path: Path) -> None:
     config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
-    app = create_app(config_path)
-    client = TestClient(app)
+    client = TestClient(create_app(config_path))
+    assert client.get("/api/journals").status_code == 401
+    assert client.get("/api/chats").status_code == 401
+    assert client.put("/api/journals/2026-07-28", json={"markdown": "x"}).status_code == 401
+
+
+def test_dialogs_mark_watched(tmp_path: Path) -> None:
+    client, _, _ = _authed_client(tmp_path)
     client.post("/api/chats", json={"id": -1001})
     fake = [{"id": -1001, "title": "팀 업무방", "type": "supergroup"}]
     with patch("worklog_agent.collect.load_dialogs", new=AsyncMock(return_value=fake)):
@@ -98,8 +119,7 @@ def test_login_start_saves_and_requests_code(tmp_path: Path) -> None:
 
 
 def test_logout_endpoint(tmp_path: Path) -> None:
-    config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
-    client = TestClient(create_app(config_path))
+    client, _, _ = _authed_client(tmp_path)
     with patch(
         "worklog_agent.web.app.logout",
         new=AsyncMock(
@@ -110,12 +130,12 @@ def test_logout_endpoint(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["authorized"] is False
     assert "로그아웃" in response.json()["message"]
+    assert client.get("/api/journals").status_code == 401
 
 
 def test_journal_update_and_delete(tmp_path: Path) -> None:
-    data_root = tmp_path / "data"
-    config_path = _write_config(tmp_path / "config.yaml", data_root)
-    client = TestClient(create_app(config_path))
+    client, state, user_id = _authed_client(tmp_path)
+    data_root = user_root(state.config.data_root, user_id)
 
     saved = client.put("/api/journals/2026-07-28", json={"markdown": "# 초안\n내용"})
     assert saved.status_code == 200
@@ -140,3 +160,38 @@ def test_journal_update_and_delete(tmp_path: Path) -> None:
 
     bad = client.put("/api/journals/not-a-date", json={"markdown": "x"})
     assert bad.status_code == 400
+
+
+def test_users_are_isolated(tmp_path: Path) -> None:
+    a, _, _ = _authed_client(tmp_path, user_id=11)
+    b, _, _ = _authed_client(tmp_path, user_id=22)
+    assert a.put("/api/journals/2026-01-01", json={"markdown": "A only"}).status_code == 200
+    assert b.put("/api/journals/2026-01-01", json={"markdown": "B only"}).status_code == 200
+    assert a.get("/api/journals/2026-01-01").json()["markdown"].strip() == "A only"
+    assert b.get("/api/journals/2026-01-01").json()["markdown"].strip() == "B only"
+    assert len(a.get("/api/journals").json()["journals"]) == 1
+    assert len(b.get("/api/journals").json()["journals"]) == 1
+
+
+def test_share_link_is_public(tmp_path: Path) -> None:
+    client, state, user_id = _authed_client(tmp_path)
+    client.put("/api/journals/2026-08-01", json={"markdown": "# 공유본"})
+    shared = client.post("/api/journals/2026-08-01/share")
+    assert shared.status_code == 200
+    token = shared.json()["token"]
+    url = shared.json()["url"]
+    assert url == f"/s/{token}"
+
+    guest = TestClient(create_app(state.config_path))
+    page = guest.get(url)
+    assert page.status_code == 200
+    assert "2026-08-01" in page.text
+    api = guest.get(f"/api/share/{token}")
+    assert api.status_code == 200
+    assert "공유본" in api.json()["markdown"]
+
+    missing = guest.get("/api/share/not-a-real-token")
+    assert missing.status_code == 404
+
+    assert guest.get("/api/journals/2026-08-01").status_code == 401
+    assert (user_root(state.config.data_root, user_id) / "journals" / "2026-08-01.md").is_file()

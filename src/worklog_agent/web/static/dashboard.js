@@ -42,10 +42,17 @@ function showBanner(message, kind) {
 
 async function api(path, options) {
   const response = await fetch(path, {
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json", ...(options && options.headers) },
     ...options,
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    applyAuthVisibility(false);
+    renderLoginForms(state.loginStage === "authorized" ? "idle" : state.loginStage);
+    const detail = data.detail;
+    throw new Error(typeof detail === "string" ? detail : "로그인이 필요합니다.");
+  }
   if (!response.ok) {
     const detail = data.detail;
     throw new Error(typeof detail === "string" ? detail : response.statusText);
@@ -329,6 +336,9 @@ function renderJournalDetail(data, { editing = false } = {}) {
       </button>
     `
     : `
+      <button type="button" id="journal-share" class="icon-btn" title="공유 링크" aria-label="공유 링크" ${hasJournal ? "" : "disabled"}>
+        <span class="material-symbols-outlined" aria-hidden="true">link</span>
+      </button>
       <button type="button" id="journal-edit" class="icon-btn" title="수정" aria-label="수정">
         <span class="material-symbols-outlined" aria-hidden="true">edit</span>
       </button>
@@ -359,9 +369,26 @@ function renderJournalDetail(data, { editing = false } = {}) {
     requestAnimationFrame(updateJournalScrollFade);
     return;
   }
+  $("#journal-share")?.addEventListener("click", () => shareJournal(data.date));
   $("#journal-edit")?.addEventListener("click", () => renderJournalDetail(data, { editing: true }));
   $("#journal-delete")?.addEventListener("click", () => deleteJournal(data.date));
   updateJournalScrollFade();
+}
+
+async function shareJournal(day) {
+  try {
+    const data = await api(`/api/journals/${day}/share`, { method: "POST", body: "{}" });
+    const url = `${window.location.origin}${data.url}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      showBanner("공유 링크를 복사했습니다.", "ok");
+    } else {
+      window.prompt("공유 링크", url);
+      showBanner("공유 링크를 만들었습니다.", "ok");
+    }
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
 }
 
 async function loadJournal(day) {
