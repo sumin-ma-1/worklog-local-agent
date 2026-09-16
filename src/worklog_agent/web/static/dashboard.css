@@ -826,6 +826,10 @@ main {
   background: rgba(30, 58, 138, 0.08);
 }
 
+.cal-day.is-today {
+  background: rgba(250, 204, 21, 0.16);
+}
+
 .cal-day.is-today .cal-num {
   font-weight: 700;
 }
@@ -833,6 +837,27 @@ main {
 .cal-day.is-selected {
   background: rgba(30, 58, 138, 0.12);
   color: var(--accent);
+}
+
+.cal-day.is-today.is-selected {
+  background: linear-gradient(
+    135deg,
+    rgba(250, 204, 21, 0.22) 0%,
+    rgba(30, 58, 138, 0.16) 100%
+  );
+  color: var(--accent);
+}
+
+.cal-day.is-today:hover {
+  background: rgba(250, 204, 21, 0.24);
+}
+
+.cal-day.is-today.is-selected:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(250, 204, 21, 0.28) 0%,
+    rgba(30, 58, 138, 0.2) 100%
+  );
 }
 
 .cal-day.has-entry .cal-dot {
