@@ -515,8 +515,8 @@ function renderExplorerFolder({ key, depth, label, count, open, childrenHtml }) 
 function panelEmptyHtml({ src, title, hint = "", size = 160 } = {}) {
   return `<li class="panel-empty">
     <img class="panel-empty-art" src="${escapeHtml(src)}" alt="" width="${size}" height="${size}">
-    <p class="panel-empty-title">${escapeHtml(title)}</p>
-    ${hint ? `<p class="panel-empty-hint">${escapeHtml(hint)}</p>` : ""}
+    <h3 class="journal-placeholder-title">${escapeHtml(title)}</h3>
+    ${hint ? `<p class="journal-placeholder-hint">${escapeHtml(hint)}</p>` : ""}
   </li>`;
 }
 
@@ -527,7 +527,7 @@ function renderJournalList() {
     list.classList.remove("explorer-list");
     list.innerHTML = panelEmptyHtml({
       src: "/static/worklog-list.png",
-      title: "아직 생성된 일지가 없습니다",
+      title: "일지 목록 없음",
       hint: "일지 생성 탭에서 만들 수 있습니다.",
       size: 180,
     });
@@ -1180,7 +1180,7 @@ function renderDialogs(filter) {
     if (!state.dialogs.length) {
       list.innerHTML = panelEmptyHtml({
         src: "/static/worklog-conv.png",
-        title: "참여 대화가 없습니다",
+        title: "참여 대화 목록 없음",
         hint: "새로고침으로 텔레그램 대화를 불러오세요.",
         size: 140,
       });
