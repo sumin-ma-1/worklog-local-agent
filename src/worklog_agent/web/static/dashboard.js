@@ -755,11 +755,14 @@ function renderJournalDetail(data, { editing = false } = {}) {
       </button>
     `
     : `
+      <button type="button" id="journal-share" class="icon-btn" title="공유 링크" aria-label="공유 링크" ${hasJournal ? "" : "disabled"}>
+        <span class="material-symbols-outlined" aria-hidden="true">link</span>
+      </button>
       <button type="button" id="journal-print" class="icon-btn" title="인쇄" aria-label="인쇄" ${hasJournal ? "" : "disabled"}>
         <span class="material-symbols-outlined" aria-hidden="true">print</span>
       </button>
-      <button type="button" id="journal-share" class="icon-btn" title="공유 링크" aria-label="공유 링크" ${hasJournal ? "" : "disabled"}>
-        <span class="material-symbols-outlined" aria-hidden="true">link</span>
+      <button type="button" id="journal-copy" class="icon-btn" title="복사" aria-label="복사" ${hasJournal ? "" : "disabled"}>
+        <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
       </button>
       <button type="button" id="journal-edit" class="icon-btn" title="수정" aria-label="수정">
         <span class="material-symbols-outlined" aria-hidden="true">edit</span>
@@ -791,11 +794,36 @@ function renderJournalDetail(data, { editing = false } = {}) {
     requestAnimationFrame(updateJournalScrollFade);
     return;
   }
+  $("#journal-copy")?.addEventListener("click", () => copyJournal(data));
   $("#journal-print")?.addEventListener("click", () => printJournal());
   $("#journal-share")?.addEventListener("click", () => shareJournal(data.date));
   $("#journal-edit")?.addEventListener("click", () => renderJournalDetail(data, { editing: true }));
   $("#journal-delete")?.addEventListener("click", () => deleteJournal(data.date));
   updateJournalScrollFade();
+}
+
+async function copyJournal(data) {
+  const title = formatJournalDayTitle(data.date);
+  const body = stripJournalLeadHeading(data.markdown || "").trim();
+  const text = body ? `${title}\n\n${body}` : title;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    }
+    showBanner("일지를 복사했습니다.", "ok");
+  } catch (err) {
+    showBanner(err.message || "복사에 실패했습니다.", "error");
+  }
 }
 
 function printJournal() {
