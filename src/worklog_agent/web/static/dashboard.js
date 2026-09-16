@@ -1330,13 +1330,13 @@ function addRunPickDate(day) {
   if (runPickDates.size >= RUN_PICK_MAX) throw new Error(`최대 ${RUN_PICK_MAX}일까지 선택할 수 있습니다.`);
   runPickDates.add(day);
   renderRunPickList();
-  $("#run-plan-wrap")?.classList.add("hidden");
+  hideRunPlan();
 }
 
 function removeRunPickDate(day) {
   runPickDates.delete(day);
   renderRunPickList();
-  $("#run-plan-wrap")?.classList.add("hidden");
+  hideRunPlan();
 }
 
 function syncRunOptionChecks() {
@@ -1392,6 +1392,25 @@ function updateRunPlanScrollFade() {
   updateScrollFade($("#run-plan-scroll"), $("#run-plan-scroll-wrap"));
 }
 
+function syncRunPreviewButton() {
+  const btn = $("#run-preview-button");
+  const wrap = $("#run-plan-wrap");
+  if (!btn) return;
+  const open = Boolean(wrap && !wrap.classList.contains("hidden"));
+  btn.classList.toggle("is-active", open);
+  btn.setAttribute("aria-pressed", open ? "true" : "false");
+  btn.title = open ? "미리보기 닫기" : "미리보기";
+  btn.setAttribute("aria-label", open ? "미리보기 닫기" : "미리보기");
+  btn.querySelector(".run-preview-on")?.classList.toggle("hidden", open);
+  btn.querySelector(".run-preview-off")?.classList.toggle("hidden", !open);
+}
+
+function hideRunPlan() {
+  $("#run-plan-wrap")?.classList.add("hidden");
+  syncRunPreviewButton();
+  updateRunPlanScrollFade();
+}
+
 function renderRunPlan(data) {
   const wrap = $("#run-plan-wrap");
   const tbody = $("#run-plan-tbody");
@@ -1401,6 +1420,7 @@ function renderRunPlan(data) {
   if (!plan.length) {
     wrap.classList.add("hidden");
     tbody.innerHTML = "";
+    syncRunPreviewButton();
     updateRunPlanScrollFade();
     return;
   }
@@ -1420,6 +1440,7 @@ function renderRunPlan(data) {
       </tr>`;
     })
     .join("");
+  syncRunPreviewButton();
   requestAnimationFrame(updateRunPlanScrollFade);
 }
 
@@ -1857,6 +1878,11 @@ document.querySelectorAll(".run-mode-tab").forEach((btn) => {
 });
 
 $("#run-preview-button")?.addEventListener("click", async () => {
+  const wrap = $("#run-plan-wrap");
+  if (wrap && !wrap.classList.contains("hidden")) {
+    hideRunPlan();
+    return;
+  }
   try {
     const data = await api("/api/run/plan", {
       method: "POST",
@@ -1905,7 +1931,7 @@ for (const id of ["run-date", "run-start", "run-end"]) {
 for (const id of ["run-skip-existing", "run-regenerate-stale", "run-force"]) {
   $(`#${id}`)?.addEventListener("change", () => {
     syncRunOptionChecks();
-    $("#run-plan-wrap")?.classList.add("hidden");
+    hideRunPlan();
   });
 }
 

@@ -1628,6 +1628,12 @@ button[type="submit"]:disabled,
   border: 0;
 }
 
+.stack-form label.run-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .run-check {
   display: flex;
   align-items: center;
@@ -1640,16 +1646,29 @@ button[type="submit"]:disabled,
 .run-check input {
   width: auto;
   margin: 0;
+  flex: 0 0 auto;
 }
 
 .run-actions {
   display: flex;
   gap: 8px;
-  align-items: stretch;
+  align-items: center;
 }
 
-.run-actions .ghost-btn {
+.run-actions #run-preview-button {
   flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  opacity: 0.7;
+}
+
+.run-actions #run-preview-button:hover,
+.run-actions #run-preview-button.is-active {
+  opacity: 1;
+}
+
+.run-actions #run-preview-button .material-symbols-outlined {
+  font-size: 22px;
 }
 
 .run-actions #run-button {
