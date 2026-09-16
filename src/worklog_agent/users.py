@@ -99,12 +99,43 @@ def remove_user_chat(root: Path, value: str | int) -> list[str | int]:
 
 
 def user_config(base: AppConfig, user_id: int | str) -> AppConfig:
-    """Return a config copy scoped to the user's storage root and chats."""
+    """Return a config copy scoped to the user's storage root, chats, and phone."""
     root = ensure_user_root(base.data_root, user_id)
     cfg = base.model_copy(deep=True)
     cfg.storage.root = root
     cfg.telegram.chats = load_user_chats(root)
+    phone = load_user_telegram(root).get("phone")
+    if phone:
+        cfg.env.telegram_phone = str(phone)
     return cfg
+
+
+def telegram_json_path(root: Path) -> Path:
+    return Path(root) / "telegram.json"
+
+
+def load_user_telegram(root: Path) -> dict[str, Any]:
+    raw = _read_json(telegram_json_path(root), {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def save_user_telegram(root: Path, updates: dict[str, Any]) -> dict[str, Any]:
+    current = load_user_telegram(root)
+    for key, value in updates.items():
+        if value is None:
+            current.pop(key, None)
+        else:
+            current[key] = value
+    _write_json(telegram_json_path(root), current)
+    return current
+
+
+def telegram_session_file(root: Path, session_name: str = "worklog") -> Path:
+    return Path(root) / "sessions" / f"{session_name}.session"
+
+
+def telegram_linked(root: Path, session_name: str = "worklog") -> bool:
+    return telegram_session_file(root, session_name).is_file()
 
 
 def pending_config(base: AppConfig, login_id: str) -> AppConfig:

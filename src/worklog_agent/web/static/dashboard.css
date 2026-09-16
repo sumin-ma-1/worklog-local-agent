@@ -93,6 +93,23 @@ body.login-mode .app-shell {
   width: 100%;
 }
 
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.auth-tabs .auth-tab {
+  width: auto;
+  flex: 1;
+  opacity: 0.45;
+}
+
+.auth-tabs .auth-tab.active {
+  opacity: 1;
+  color: var(--accent);
+}
+
 body:not(.login-mode) .login-screen {
   display: none !important;
 }

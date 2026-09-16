@@ -15,47 +15,56 @@
   <section id="view-login" class="login-screen">
     <div class="login-card">
       <div class="login-hero">
-        <h2>텔레그램 로그인</h2>
-        <p>
-          <a href="https://my.telegram.org" target="_blank" rel="noreferrer">my.telegram.org</a>
-          의 API ID / Hash 와 전화번호로 로그인합니다.
-        </p>
+        <h2 id="auth-hero-title">로그인</h2>
+        <p id="auth-hero-text">아이디와 비밀번호로 Worklog에 로그인합니다.</p>
       </div>
       <p id="login-status" class="meta">상태 확인 중…</p>
 
-      <form id="login-form" class="stack-form">
-        <label>
-          API ID
-          <input id="api-id-input" name="api_id" inputmode="numeric" autocomplete="off" placeholder="12345678">
-        </label>
-        <label>
-          API Hash
-          <input id="api-hash-input" name="api_hash" autocomplete="off" placeholder="저장된 값은 마스킹됩니다">
-        </label>
-        <label>
-          전화번호
-          <input id="login-phone-input" autocomplete="tel" placeholder="+821012345678">
-        </label>
-        <button type="submit" id="login-submit">로그인</button>
-      </form>
+      <div id="auth-account-panel">
+        <div class="auth-tabs" role="tablist">
+          <button type="button" class="ghost-btn auth-tab active" data-auth-mode="login" id="tab-login">로그인</button>
+          <button type="button" class="ghost-btn auth-tab" data-auth-mode="register" id="tab-register">회원가입</button>
+        </div>
+        <form id="account-form" class="stack-form">
+          <label>
+            아이디
+            <input id="username-input" name="username" autocomplete="username" placeholder="username">
+          </label>
+          <label>
+            비밀번호
+            <input id="password-input" name="password" type="password" autocomplete="current-password" placeholder="8자 이상">
+          </label>
+          <button type="submit" id="account-submit">로그인</button>
+        </form>
+      </div>
 
-      <form id="login-code-form" class="stack-form hidden">
-        <label>
-          인증코드
-          <input id="login-code-input" inputmode="numeric" autocomplete="one-time-code" placeholder="12345">
-        </label>
-        <button type="submit">코드로 로그인</button>
-        <button type="button" class="ghost-btn" id="login-restart">처음부터</button>
-      </form>
+      <div id="auth-telegram-panel" class="hidden">
+        <form id="login-form" class="stack-form">
+          <label>
+            전화번호
+            <input id="login-phone-input" autocomplete="tel" placeholder="+821012345678">
+          </label>
+          <button type="submit" id="login-submit">텔레그램 연동</button>
+        </form>
 
-      <form id="login-password-form" class="stack-form hidden">
-        <label>
-          2단계 인증 비밀번호
-          <input id="login-password-input" type="password" autocomplete="current-password">
-        </label>
-        <button type="submit">비밀번호로 로그인</button>
-        <button type="button" class="ghost-btn" id="login-restart-password">처음부터</button>
-      </form>
+        <form id="login-code-form" class="stack-form hidden">
+          <label>
+            인증코드
+            <input id="login-code-input" inputmode="numeric" autocomplete="one-time-code" placeholder="12345">
+          </label>
+          <button type="submit">코드로 연동</button>
+          <button type="button" class="ghost-btn" id="login-restart">처음부터</button>
+        </form>
+
+        <form id="login-password-form" class="stack-form hidden">
+          <label>
+            2단계 인증 비밀번호
+            <input id="login-password-input" type="password" autocomplete="current-password">
+          </label>
+          <button type="submit">비밀번호로 연동</button>
+          <button type="button" class="ghost-btn" id="login-restart-password">처음부터</button>
+        </form>
+      </div>
     </div>
   </section>
 

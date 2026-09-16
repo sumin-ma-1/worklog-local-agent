@@ -4,10 +4,9 @@ import asyncio
 import json
 import logging
 import re
-import secrets
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
@@ -18,13 +17,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+from worklog_agent.accounts import AccountError, AccountStore
 from worklog_agent.config import (
     AppConfig,
     chat_ref_key,
     load_config,
     normalize_chat_ref,
-    save_telegram_credentials,
-    telegram_credential_summary,
 )
 from worklog_agent.pipeline import Pipeline
 from worklog_agent.storage import Storage
@@ -39,16 +37,18 @@ from worklog_agent.telegram_auth import (
 from worklog_agent.users import (
     add_user_chat,
     create_share_token,
+    ensure_user_root,
     find_share,
+    load_user_telegram,
     migrate_legacy_to_user,
-    move_pending_to_user,
-    pending_config,
     remove_user_chat,
     revoke_share_for_day,
+    save_user_telegram,
     share_for_day,
+    telegram_linked,
     user_config,
 )
-from worklog_agent.web.auth_session import COOKIE_LOGIN, COOKIE_USER, SessionStore
+from worklog_agent.web.auth_session import COOKIE_USER, SessionStore
 
 logger = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).parent
@@ -92,6 +92,7 @@ class DashboardState:
     config_path: Path
     config: AppConfig
     sessions: SessionStore
+    accounts: AccountStore
     logins: dict[str, LoginSession] = field(default_factory=dict)
     logins_lock: threading.Lock = field(default_factory=threading.Lock)
     runtimes: dict[str, UserRuntime] = field(default_factory=dict)
@@ -108,17 +109,17 @@ class DashboardState:
                 self.runtimes[key] = UserRuntime()
             return self.runtimes[key]
 
-    def login_for(self, login_id: str) -> LoginSession:
+    def login_for(self, user_id: str) -> LoginSession:
         with self.logins_lock:
-            if login_id not in self.logins:
-                self.logins[login_id] = LoginSession()
-            return self.logins[login_id]
+            if user_id not in self.logins:
+                self.logins[user_id] = LoginSession()
+            return self.logins[user_id]
 
-    def clear_login(self, login_id: str | None) -> None:
-        if not login_id:
+    def clear_login(self, user_id: str | None) -> None:
+        if not user_id:
             return
         with self.logins_lock:
-            self.logins.pop(login_id, None)
+            self.logins.pop(user_id, None)
 
 
 class ChatBody(BaseModel):
@@ -134,10 +135,13 @@ class RunBody(BaseModel):
     date: str | None = Field(default=None)
 
 
-class LoginStartBody(BaseModel):
+class AuthBody(BaseModel):
+    username: str
+    password: str
+
+
+class LinkStartBody(BaseModel):
     phone: str
-    api_id: str | int | None = None
-    api_hash: str | None = None
 
 
 class CodeBody(BaseModel):
@@ -167,6 +171,10 @@ def _set_cookie(response: Response, name: str, value: str) -> None:
 
 def _clear_cookie(response: Response, name: str) -> None:
     response.delete_cookie(name, path="/")
+
+
+def _api_ready(config: AppConfig) -> bool:
+    return bool(config.env.telegram_api_id and config.env.telegram_api_hash)
 
 
 def _watched_chats(cfg: AppConfig) -> list[dict[str, object]]:
@@ -222,6 +230,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         config_path=path,
         config=base,
         sessions=SessionStore(base.data_root),
+        accounts=AccountStore(base.data_root),
     )
 
     app = FastAPI(title="worklog-local-agent", docs_url=None, redoc_url=None)
@@ -229,56 +238,59 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 
-    def current_user(request: Request) -> dict | None:
+    def current_session(request: Request) -> dict | None:
         return state.sessions.resolve(request.cookies.get(COOKIE_USER))
 
-    def require_user(request: Request) -> tuple[str, AppConfig]:
-        session = current_user(request)
+    def require_account(request: Request) -> tuple[str, dict]:
+        session = current_session(request)
         if not session:
             raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
         user_id = str(session["user_id"])
+        account = state.accounts.get(user_id)
+        if not account:
+            raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
+        return user_id, account
+
+    def require_telegram(request: Request) -> tuple[str, AppConfig]:
+        user_id, _ = require_account(request)
         state.reload()
         cfg = user_config(state.config, user_id)
-        session_base = Storage(cfg.data_root).session_path(cfg.telegram.session_name)
-        if not Path(f"{session_base}.session").is_file():
-            raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
+        if not telegram_linked(cfg.data_root, cfg.telegram.session_name):
+            raise HTTPException(status_code=403, detail="telegram_required")
         return user_id, cfg
 
-    def ensure_login_id(request: Request) -> str:
-        return request.cookies.get(COOKIE_LOGIN) or secrets.token_urlsafe(24)
+    def me_payload(user_id: str, account: dict) -> dict:
+        state.reload()
+        root = ensure_user_root(state.config.data_root, user_id)
+        meta = load_user_telegram(root)
+        linked = telegram_linked(root, state.config.telegram.session_name)
+        return {
+            "user": state.accounts.public_user(account),
+            "telegram": {
+                "linked": linked,
+                "phone": meta.get("phone"),
+                "api_ready": _api_ready(state.config),
+                "telegram_user_id": meta.get("telegram_user_id"),
+                "name": meta.get("name"),
+            },
+        }
 
-    def attach_login_cookie(response: JSONResponse, request: Request, login_id: str) -> None:
-        if not request.cookies.get(COOKIE_LOGIN):
-            _set_cookie(response, COOKIE_LOGIN, login_id)
-
-    async def finalize_auth_result(
-        request: Request,
-        *,
-        login_id: str,
-        result: dict,
-    ) -> JSONResponse:
-        response = JSONResponse(result)
+    async def finalize_telegram_link(user_id: str, result: dict) -> dict:
         user = result.get("user") if isinstance(result.get("user"), dict) else None
-        if result.get("stage") == "authorized" and user and user.get("id") is not None:
-            user_id = int(user["id"])
-            state.reload()
-            migrate_legacy_to_user(
-                state.config.data_root,
-                user_id,
-                chats=list(state.config.telegram.chats),
-            )
-            move_pending_to_user(state.config.data_root, login_id, user_id)
-            token = state.sessions.create(user_id, name=str(user.get("name") or user_id))
-            _set_cookie(response, COOKIE_USER, token)
-            _clear_cookie(response, COOKIE_LOGIN)
-            state.clear_login(login_id)
-            result = {**result, "authorized": True}
-            response = JSONResponse(result)
-            _set_cookie(response, COOKIE_USER, token)
-            _clear_cookie(response, COOKIE_LOGIN)
-        else:
-            attach_login_cookie(response, request, login_id)
-        return response
+        if result.get("stage") != "authorized" or not user:
+            return result
+        state.reload()
+        root = ensure_user_root(state.config.data_root, user_id)
+        save_user_telegram(
+            root,
+            {
+                "telegram_user_id": user.get("id"),
+                "name": user.get("name"),
+                "linked_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        state.clear_login(user_id)
+        return {**result, "linked": True}
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
@@ -329,8 +341,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="공유 링크가 없거나 만료되었습니다.")
         user_dir, meta = found
         day = _require_day(str(meta.get("day") or ""))
-        storage = Storage(user_dir)
-        return _journal_payload(storage, day)
+        return _journal_payload(Storage(user_dir), day)
 
     @app.get("/api/share/{token}/file")
     async def share_file(token: str, path: str = Query(..., min_length=1)) -> FileResponse:
@@ -340,7 +351,6 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="공유 링크가 없거나 만료되었습니다.")
         user_dir, meta = found
         day = str(meta.get("day") or "")
-        # Restrict to attachments under the shared day.
         rel = path.replace("\\", "/").lstrip("/")
         if not rel.startswith(f"{day}/"):
             raise HTTPException(status_code=400, detail="이 공유 링크에서 열 수 없는 파일입니다.")
@@ -352,211 +362,240 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return FileResponse(file_path, filename=file_path.name)
 
+    @app.post("/api/auth/register")
+    async def auth_register(body: AuthBody) -> JSONResponse:
+        state.reload()
+        try:
+            user = state.accounts.register(body.username, body.password)
+        except AccountError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        ensure_user_root(state.config.data_root, user["id"])
+        migrate_legacy_to_user(
+            state.config.data_root,
+            user["id"],
+            chats=list(state.config.telegram.chats),
+        )
+        token = state.sessions.create(user["id"], name=user["username"])
+        response = JSONResponse({"user": user, "telegram": {"linked": False, "api_ready": _api_ready(state.config)}})
+        _set_cookie(response, COOKIE_USER, token)
+        return response
+
+    @app.post("/api/auth/login")
+    async def auth_login(body: AuthBody) -> JSONResponse:
+        state.reload()
+        try:
+            user = state.accounts.authenticate(body.username, body.password)
+        except AccountError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        ensure_user_root(state.config.data_root, user["id"])
+        token = state.sessions.create(user["id"], name=user["username"])
+        account = state.accounts.get(user["id"]) or user
+        payload = me_payload(user["id"], account)
+        response = JSONResponse(payload)
+        _set_cookie(response, COOKIE_USER, token)
+        return response
+
+    @app.post("/api/auth/logout")
+    async def auth_logout(request: Request) -> JSONResponse:
+        state.sessions.clear(request.cookies.get(COOKIE_USER))
+        response = JSONResponse({"ok": True})
+        _clear_cookie(response, COOKIE_USER)
+        return response
+
+    @app.get("/api/me")
+    async def me(request: Request) -> dict:
+        user_id, account = require_account(request)
+        return me_payload(user_id, account)
+
     @app.get("/api/overview")
     async def overview(request: Request) -> dict:
         state.reload()
-        credentials = telegram_credential_summary(state.config)
-        session = current_user(request)
-        login_id = request.cookies.get(COOKIE_LOGIN)
-        login_stage = state.login_for(login_id).stage if login_id else "idle"
-
+        session = current_session(request)
+        base = {
+            "timezone": state.config.timezone,
+            "model": state.config.journal.ollama.model,
+            "today": _today(state.config),
+            "api_ready": _api_ready(state.config),
+        }
         if not session:
             return {
-                "timezone": state.config.timezone,
-                "model": state.config.journal.ollama.model,
-                "today": _today(state.config),
+                **base,
+                "authenticated": False,
                 "chat_count": 0,
                 "journal_count": 0,
                 "job": JobState().__dict__,
-                "credentials": credentials,
+                "user": None,
                 "telegram": {
+                    "linked": False,
                     "authorized": False,
                     "user": None,
-                    "message": "텔레그램 로그인이 필요합니다.",
-                },
-                "login_stage": login_stage if login_stage != "authorized" else "idle",
-            }
-
-        user_id = str(session["user_id"])
-        cfg = user_config(state.config, user_id)
-        storage = Storage(cfg.data_root)
-        storage.ensure()
-        session_base = storage.session_path(cfg.telegram.session_name)
-        has_session_file = Path(f"{session_base}.session").is_file()
-        telegram = {
-            "authorized": False,
-            "user": None,
-            "message": "텔레그램 로그인이 필요합니다.",
-        }
-        if credentials["ready"] and has_session_file:
-            try:
-                telegram = await auth_status(cfg)
-            except Exception as exc:
-                telegram = {"authorized": False, "user": None, "message": str(exc)}
-        if has_session_file and not telegram.get("authorized"):
-            telegram = {
-                "authorized": True,
-                "user": {
-                    "id": int(user_id) if user_id.isdigit() else user_id,
-                    "name": session.get("name") or user_id,
-                    "username": None,
-                    "phone": None,
-                },
-                "message": "로그인됨",
-            }
-        if not has_session_file:
-            return {
-                "timezone": state.config.timezone,
-                "model": state.config.journal.ollama.model,
-                "today": _today(state.config),
-                "chat_count": 0,
-                "journal_count": 0,
-                "job": JobState().__dict__,
-                "credentials": credentials,
-                "telegram": {
-                    "authorized": False,
-                    "user": None,
-                    "message": "텔레그램 로그인이 필요합니다.",
+                    "message": "로그인이 필요합니다.",
+                    "api_ready": _api_ready(state.config),
                 },
                 "login_stage": "idle",
             }
 
+        user_id = str(session["user_id"])
+        account = state.accounts.get(user_id)
+        if not account:
+            return {
+                **base,
+                "authenticated": False,
+                "chat_count": 0,
+                "journal_count": 0,
+                "job": JobState().__dict__,
+                "user": None,
+                "telegram": {
+                    "linked": False,
+                    "authorized": False,
+                    "user": None,
+                    "message": "로그인이 필요합니다.",
+                    "api_ready": _api_ready(state.config),
+                },
+                "login_stage": "idle",
+            }
+
+        cfg = user_config(state.config, user_id)
+        linked = telegram_linked(cfg.data_root, cfg.telegram.session_name)
+        login = state.login_for(user_id)
+        meta = load_user_telegram(cfg.data_root)
+        telegram: dict = {
+            "linked": linked,
+            "authorized": linked,
+            "phone": meta.get("phone"),
+            "api_ready": _api_ready(state.config),
+            "user": None,
+            "message": "텔레그램 연동이 필요합니다." if not linked else "연동됨",
+        }
+        if linked:
+            if _api_ready(state.config):
+                try:
+                    status = await auth_status(cfg)
+                    if status.get("authorized"):
+                        telegram = {
+                            **telegram,
+                            **status,
+                            "linked": True,
+                            "phone": meta.get("phone"),
+                            "api_ready": True,
+                        }
+                    else:
+                        telegram["user"] = {
+                            "id": meta.get("telegram_user_id"),
+                            "name": meta.get("name") or session.get("name") or user_id,
+                        }
+                        telegram["message"] = "연동됨"
+                except Exception as exc:
+                    telegram["user"] = {
+                        "id": meta.get("telegram_user_id"),
+                        "name": meta.get("name") or session.get("name") or user_id,
+                    }
+                    telegram["message"] = str(exc)
+            else:
+                telegram["user"] = {
+                    "id": meta.get("telegram_user_id"),
+                    "name": meta.get("name") or session.get("name") or user_id,
+                }
+
+        storage = Storage(cfg.data_root)
+        storage.ensure()
         return {
-            "timezone": cfg.timezone,
-            "model": cfg.journal.ollama.model,
-            "today": _today(cfg),
-            "chat_count": len(cfg.telegram.chats),
-            "journal_count": len(storage.list_journal_dates()),
-            "job": state.runtime_for(user_id).snapshot_job(),
-            "credentials": credentials,
+            **base,
+            "authenticated": True,
+            "chat_count": len(cfg.telegram.chats) if linked else 0,
+            "journal_count": len(storage.list_journal_dates()) if linked else 0,
+            "job": state.runtime_for(user_id).snapshot_job() if linked else JobState().__dict__,
+            "user": state.accounts.public_user(account),
             "telegram": telegram,
-            "login_stage": "authorized",
+            "login_stage": "authorized" if linked else login.stage,
         }
 
     @app.get("/api/telegram/status")
     async def telegram_status(request: Request) -> dict:
-        state.reload()
-        credentials = telegram_credential_summary(state.config)
-        session = current_user(request)
-        login_id = request.cookies.get(COOKIE_LOGIN)
-        login_stage = state.login_for(login_id).stage if login_id else "idle"
-        if not session:
-            return {
-                "credentials": credentials,
-                "telegram": {
-                    "authorized": False,
-                    "user": None,
-                    "message": "텔레그램 로그인이 필요합니다.",
-                },
-                "login_stage": login_stage,
-            }
-        cfg = user_config(state.config, session["user_id"])
-        try:
-            telegram = await auth_status(cfg) if credentials["ready"] else {
-                "authorized": False,
-                "user": None,
-                "message": "API ID / Hash 가 필요합니다.",
-            }
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        return {
-            "credentials": credentials,
-            "telegram": telegram,
-            "login_stage": "authorized" if telegram.get("authorized") else login_stage,
-        }
+        user_id, account = require_account(request)
+        return me_payload(user_id, account)
 
     @app.post("/api/telegram/login/start")
-    async def login_start(request: Request, body: LoginStartBody) -> JSONResponse:
+    async def login_start(request: Request, body: LinkStartBody) -> dict:
+        user_id, _ = require_account(request)
         state.reload()
-        login_id = ensure_login_id(request)
-        login = state.login_for(login_id)
-        try:
-            api_id = body.api_id if body.api_id not in (None, "") else state.config.env.telegram_api_id
-            api_hash = body.api_hash if body.api_hash not in (None, "") else state.config.env.telegram_api_hash
-            if not api_id or not api_hash:
-                raise ValueError("API ID / Hash 를 입력하세요.")
-            state.config = save_telegram_credentials(
-                state.config,
-                api_id=api_id,
-                api_hash=api_hash,
-                phone=body.phone,
+        if not _api_ready(state.config):
+            raise HTTPException(
+                status_code=503,
+                detail="서버에 TELEGRAM_API_ID / TELEGRAM_API_HASH 를 설정하세요.",
             )
-            cfg = pending_config(state.config, login_id)
-            result = await start_login(cfg, body.phone, login)
-            return await finalize_auth_result(request, login_id=login_id, result=result)
+        phone = body.phone.strip()
+        if not phone:
+            raise HTTPException(status_code=400, detail="전화번호를 입력하세요.")
+        save_user_telegram(ensure_user_root(state.config.data_root, user_id), {"phone": phone})
+        cfg = user_config(state.config, user_id)
+        login = state.login_for(user_id)
+        try:
+            result = await start_login(cfg, phone, login)
+            return await finalize_telegram_link(user_id, result)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.post("/api/telegram/login/code")
-    async def login_code(request: Request, body: CodeBody) -> JSONResponse:
+    async def login_code(request: Request, body: CodeBody) -> dict:
+        user_id, _ = require_account(request)
         state.reload()
-        login_id = ensure_login_id(request)
-        login = state.login_for(login_id)
+        if not _api_ready(state.config):
+            raise HTTPException(
+                status_code=503,
+                detail="서버에 TELEGRAM_API_ID / TELEGRAM_API_HASH 를 설정하세요.",
+            )
+        cfg = user_config(state.config, user_id)
+        login = state.login_for(user_id)
         try:
-            cfg = pending_config(state.config, login_id)
             result = await submit_code(cfg, body.code, login)
-            return await finalize_auth_result(request, login_id=login_id, result=result)
+            return await finalize_telegram_link(user_id, result)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.post("/api/telegram/login/password")
-    async def login_password(request: Request, body: PasswordBody) -> JSONResponse:
+    async def login_password(request: Request, body: PasswordBody) -> dict:
+        user_id, _ = require_account(request)
         state.reload()
-        login_id = ensure_login_id(request)
-        login = state.login_for(login_id)
+        if not _api_ready(state.config):
+            raise HTTPException(
+                status_code=503,
+                detail="서버에 TELEGRAM_API_ID / TELEGRAM_API_HASH 를 설정하세요.",
+            )
+        cfg = user_config(state.config, user_id)
+        login = state.login_for(user_id)
         try:
-            cfg = pending_config(state.config, login_id)
             result = await submit_password(cfg, body.password, login)
-            return await finalize_auth_result(request, login_id=login_id, result=result)
+            return await finalize_telegram_link(user_id, result)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    @app.post("/api/telegram/logout")
-    async def telegram_logout(request: Request) -> JSONResponse:
+    @app.post("/api/telegram/unlink")
+    async def telegram_unlink(request: Request) -> dict:
+        user_id, _ = require_account(request)
         state.reload()
-        session = current_user(request)
-        login_id = request.cookies.get(COOKIE_LOGIN)
+        cfg = user_config(state.config, user_id)
         try:
-            if session:
-                user_id = str(session["user_id"])
-                cfg = user_config(state.config, user_id)
-                login = LoginSession(stage="authorized")
-                result = await logout(cfg, login)
-                state.sessions.clear(request.cookies.get(COOKIE_USER))
-                state.clear_login(login_id)
-            elif login_id:
-                cfg = pending_config(state.config, login_id)
-                result = await logout(cfg, state.login_for(login_id))
-                state.clear_login(login_id)
-            else:
-                result = {"stage": "idle", "message": "로그아웃되었습니다.", "authorized": False}
+            await logout(cfg, state.login_for(user_id))
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-        state.reload()
-        response = JSONResponse(
-            {
-                **result,
-                "credentials": telegram_credential_summary(state.config),
-            }
-        )
-        _clear_cookie(response, COOKIE_USER)
-        _clear_cookie(response, COOKIE_LOGIN)
-        return response
+        state.clear_login(user_id)
+        return {"linked": False, "message": "텔레그램 연동을 해제했습니다."}
 
     @app.get("/api/chats")
     async def list_chats(request: Request) -> dict:
-        _, cfg = require_user(request)
+        _, cfg = require_telegram(request)
         return {"chats": _watched_chats(cfg)}
 
     @app.post("/api/chats")
     async def add_chat(request: Request, body: ChatBody) -> dict:
-        user_id, cfg = require_user(request)
+        user_id, cfg = require_telegram(request)
         try:
             add_user_chat(cfg.data_root, body.id)
         except ValueError as exc:
@@ -568,7 +607,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @app.post("/api/chats/delete")
     async def delete_chat(request: Request, body: ChatBody) -> dict:
-        user_id, cfg = require_user(request)
+        user_id, cfg = require_telegram(request)
         try:
             remove_user_chat(cfg.data_root, body.id)
         except ValueError as exc:
@@ -580,7 +619,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     async def dialogs(request: Request) -> dict:
         from worklog_agent.collect import load_dialogs
 
-        _, cfg = require_user(request)
+        _, cfg = require_telegram(request)
         watched = {chat_ref_key(item) for item in cfg.telegram.chats}
         try:
             rows = await load_dialogs(cfg, interactive=False)
@@ -603,19 +642,17 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/journals")
     async def journals(request: Request) -> dict:
-        _, cfg = require_user(request)
+        _, cfg = require_telegram(request)
         storage = Storage(cfg.data_root)
         dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
         items = []
         for day in dates:
-            journal_path = storage.journal_path(day)
-            daily_path = storage.daily_path(day)
             share = share_for_day(cfg.data_root, day)
             items.append(
                 {
                     "date": day,
-                    "has_journal": journal_path.exists(),
-                    "has_daily": daily_path.exists(),
+                    "has_journal": storage.journal_path(day).exists(),
+                    "has_daily": storage.daily_path(day).exists(),
                     "attachments": len(storage.list_attachments(day)),
                     "share_token": share["token"] if share else None,
                 }
@@ -624,10 +661,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/journals/{day}")
     async def journal_detail(request: Request, day: str) -> dict:
-        _, cfg = require_user(request)
+        _, cfg = require_telegram(request)
         day = _require_day(day)
-        storage = Storage(cfg.data_root)
-        payload = _journal_payload(storage, day)
+        payload = _journal_payload(Storage(cfg.data_root), day)
         share = share_for_day(cfg.data_root, day)
         payload["share_token"] = share["token"] if share else None
         payload["share_url"] = f"/s/{share['token']}" if share else None
@@ -635,7 +671,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @app.put("/api/journals/{day}")
     async def update_journal(request: Request, day: str, body: JournalBody) -> dict:
-        _, cfg = require_user(request)
+        _, cfg = require_telegram(request)
         day = _require_day(day)
         storage = Storage(cfg.data_root)
         path = storage.save_journal(day, body.markdown)
@@ -649,7 +685,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @app.delete("/api/journals/{day}")
     async def delete_journal(request: Request, day: str) -> dict:
-        _, cfg = require_user(request)
+        _, cfg = require_telegram(request)
         day = _require_day(day)
         storage = Storage(cfg.data_root)
         if not storage.delete_journal(day):
@@ -659,28 +695,24 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @app.post("/api/journals/{day}/share")
     async def share_journal(request: Request, day: str) -> dict:
-        _, cfg = require_user(request)
+        _, cfg = require_telegram(request)
         day = _require_day(day)
         storage = Storage(cfg.data_root)
         if not storage.journal_path(day).exists() and not storage.daily_path(day).exists():
             raise HTTPException(status_code=404, detail="공유할 일지가 없습니다.")
         meta = create_share_token(cfg.data_root, day)
-        return {
-            "date": day,
-            "token": meta["token"],
-            "url": f"/s/{meta['token']}",
-        }
+        return {"date": day, "token": meta["token"], "url": f"/s/{meta['token']}"}
 
     @app.delete("/api/journals/{day}/share")
     async def unshare_journal(request: Request, day: str) -> dict:
-        _, cfg = require_user(request)
+        _, cfg = require_telegram(request)
         day = _require_day(day)
         removed = revoke_share_for_day(cfg.data_root, day)
         return {"date": day, "revoked": removed > 0}
 
     @app.get("/api/attachments/file")
     async def attachment_file(request: Request, path: str = Query(..., min_length=1)) -> FileResponse:
-        _, cfg = require_user(request)
+        _, cfg = require_telegram(request)
         try:
             file_path = Storage(cfg.data_root).attachment_file(path)
         except ValueError as exc:
@@ -691,12 +723,12 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/job")
     async def job(request: Request) -> dict:
-        user_id, _ = require_user(request)
+        user_id, _ = require_telegram(request)
         return state.runtime_for(user_id).snapshot_job()
 
     @app.post("/api/run")
     async def run_pipeline(request: Request, body: RunBody) -> dict:
-        user_id, cfg = require_user(request)
+        user_id, cfg = require_telegram(request)
         runtime = state.runtime_for(user_id)
         with runtime.job_lock:
             busy = runtime.job.status == "running" or (
