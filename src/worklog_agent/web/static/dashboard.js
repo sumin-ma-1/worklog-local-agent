@@ -1890,20 +1890,22 @@ function renderSchedules(items) {
         : "—";
       const last = item.last_run_at ? item.last_run_at.replace("T", " ").slice(0, 16) : "—";
       return `<li class="schedule-item${item.enabled ? "" : " is-disabled"}">
-        <div class="schedule-item-main">
+        <div class="schedule-item-head">
           <strong>${escapeHtml(item.name)}</strong>
-          <span class="schedule-meta">${escapeHtml(item.time)} · ${escapeHtml(target)}</span>
-          <span class="schedule-meta">최근 ${escapeHtml(last)} · ${escapeHtml(status)}</span>
-          ${item.last_message ? `<span class="schedule-meta">${escapeHtml(item.last_message)}</span>` : ""}
-        </div>
-        <div class="schedule-item-actions">
-          <label class="run-check schedule-toggle" title="예약 사용">
-            <input type="checkbox" data-schedule-toggle="${escapeHtml(item.id)}" ${item.enabled ? "checked" : ""}>
-            사용
-          </label>
           <button type="button" class="icon-btn danger-icon schedule-delete" data-schedule-delete="${escapeHtml(item.id)}" title="삭제" aria-label="삭제">
-            <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
           </button>
+        </div>
+        <div class="schedule-item-body">
+          <div class="schedule-item-main">
+            <span class="schedule-meta">${escapeHtml(item.time)} · ${escapeHtml(target)}</span>
+            <span class="schedule-meta">최근 ${escapeHtml(last)} · ${escapeHtml(status)}</span>
+            ${item.last_message ? `<span class="schedule-meta">${escapeHtml(item.last_message)}</span>` : ""}
+          </div>
+          <label class="switch schedule-toggle" title="예약 사용" data-schedule-toggle="${escapeHtml(item.id)}">
+            <input type="checkbox" ${item.enabled ? "checked" : ""} aria-label="예약 사용">
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
         </div>
       </li>`;
     })
@@ -2588,10 +2590,12 @@ $("#schedule-list")?.addEventListener("click", async (event) => {
   }
   const toggle = event.target.closest("[data-schedule-toggle]");
   if (toggle?.dataset.scheduleToggle) {
+    const input = toggle.matches("input") ? toggle : toggle.querySelector("input[type='checkbox']");
+    if (!input) return;
     try {
       await api(`/api/schedules/${toggle.dataset.scheduleToggle}`, {
         method: "PATCH",
-        body: JSON.stringify({ enabled: toggle.checked }),
+        body: JSON.stringify({ enabled: input.checked }),
       });
       loadSchedules();
     } catch (err) {
