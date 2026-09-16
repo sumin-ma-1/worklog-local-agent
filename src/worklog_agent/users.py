@@ -106,6 +106,30 @@ def remove_user_chat(root: Path, value: str | int) -> list[str | int]:
     return save_user_chats(root, remaining)
 
 
+def telegram_json_path(root: Path) -> Path:
+    return Path(root) / "telegram.json"
+
+
+def preferences_path(root: Path) -> Path:
+    return Path(root) / "preferences.json"
+
+
+def load_user_preferences(root: Path) -> dict[str, Any]:
+    raw = _read_json(preferences_path(root), {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def save_user_preferences(root: Path, updates: dict[str, Any]) -> dict[str, Any]:
+    current = load_user_preferences(root)
+    for key, value in updates.items():
+        if value is None:
+            current.pop(key, None)
+        else:
+            current[key] = value
+    _write_json(preferences_path(root), current)
+    return current
+
+
 def user_config(base: AppConfig, user_id: int | str) -> AppConfig:
     """Return a config copy scoped to the user's storage root, chats, and phone."""
     root = ensure_user_root(base.data_root, user_id)
@@ -115,11 +139,14 @@ def user_config(base: AppConfig, user_id: int | str) -> AppConfig:
     phone = load_user_telegram(root).get("phone")
     if phone:
         cfg.env.telegram_phone = str(phone)
+    prefs = load_user_preferences(root)
+    timezone = str(prefs.get("timezone") or "").strip()
+    if timezone:
+        cfg.timezone = timezone
+    model = str(prefs.get("model") or "").strip()
+    if model:
+        cfg.journal.ollama.model = model
     return cfg
-
-
-def telegram_json_path(root: Path) -> Path:
-    return Path(root) / "telegram.json"
 
 
 def load_user_telegram(root: Path) -> dict[str, Any]:

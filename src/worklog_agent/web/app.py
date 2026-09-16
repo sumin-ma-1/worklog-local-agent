@@ -53,10 +53,12 @@ from worklog_agent.users import (
     ensure_user_root,
     find_share,
     load_user_chats,
+    load_user_preferences,
     load_user_telegram,
     migrate_legacy_to_user,
     remove_user_chat,
     revoke_share_for_day,
+    save_user_preferences,
     save_user_telegram,
     share_for_day,
     telegram_linked,
@@ -165,6 +167,11 @@ class JournalPromptBody(BaseModel):
     sections: list[str] = Field(min_length=1, max_length=20)
 
 
+class PreferencesBody(BaseModel):
+    timezone: str | None = Field(default=None, min_length=1, max_length=64)
+    model: str | None = Field(default=None, min_length=1, max_length=128)
+
+
 class AuthBody(BaseModel):
     username: str
     password: str
@@ -180,6 +187,17 @@ class CodeBody(BaseModel):
 
 class PasswordBody(BaseModel):
     password: str
+
+
+def _validate_timezone(name: str) -> str:
+    value = str(name or "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="시간대를 입력하세요.")
+    try:
+        ZoneInfo(value)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"지원하지 않는 시간대입니다: {value}") from exc
+    return value
 
 
 def _today(config: AppConfig) -> str:
@@ -558,7 +576,10 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         storage = Storage(cfg.data_root)
         storage.ensure()
         return {
-            **base,
+            "timezone": cfg.timezone,
+            "model": cfg.journal.ollama.model,
+            "today": _today(cfg),
+            "api_ready": _api_ready(state.config),
             "authenticated": True,
             "is_admin": is_admin_username(str(account.get("username") or "")),
             "chat_count": len(cfg.telegram.chats) if linked else 0,
@@ -567,6 +588,58 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             "user": state.accounts.public_user(account),
             "telegram": telegram,
             "login_stage": "authorized" if linked else login.stage,
+        }
+
+    @app.get("/api/models")
+    async def list_models(request: Request) -> dict:
+        user_id, _ = require_account(request)
+        cfg = user_config(state.config, user_id)
+        from worklog_agent.ollama import OllamaError, list_model_names
+
+        current = cfg.journal.ollama.model
+        try:
+            models = await list_model_names(cfg)
+        except OllamaError:
+            models = [current] if current else []
+        if current and current not in models:
+            models = [current, *models]
+        return {"models": models, "current": current}
+
+    @app.get("/api/preferences")
+    async def get_preferences(request: Request) -> dict:
+        user_id, _ = require_account(request)
+        cfg = user_config(state.config, user_id)
+        root = ensure_user_root(state.config.data_root, user_id)
+        prefs = load_user_preferences(root)
+        return {
+            "timezone": cfg.timezone,
+            "model": cfg.journal.ollama.model,
+            "today": _today(cfg),
+            "saved": {
+                "timezone": prefs.get("timezone"),
+                "model": prefs.get("model"),
+            },
+        }
+
+    @app.patch("/api/preferences")
+    async def patch_preferences(request: Request, body: PreferencesBody) -> dict:
+        user_id, _ = require_account(request)
+        root = ensure_user_root(state.config.data_root, user_id)
+        updates: dict = {}
+        if body.timezone is not None:
+            updates["timezone"] = _validate_timezone(body.timezone)
+        if body.model is not None:
+            model = str(body.model).strip()
+            if not model:
+                raise HTTPException(status_code=400, detail="모델을 입력하세요.")
+            updates["model"] = model
+        if updates:
+            save_user_preferences(root, updates)
+        cfg = user_config(state.config, user_id)
+        return {
+            "timezone": cfg.timezone,
+            "model": cfg.journal.ollama.model,
+            "today": _today(cfg),
         }
 
     @app.get("/api/admin/users")

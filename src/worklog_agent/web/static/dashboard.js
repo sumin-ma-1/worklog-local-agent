@@ -23,6 +23,13 @@ const state = {
   journalPromptDefault: true,
   journalPromptEditing: false,
   journalSectionsDraft: [],
+  timezone: "Asia/Seoul",
+  model: "",
+  models: [],
+  today: null,
+  chatCount: 0,
+  journalCount: 0,
+  telegramLabel: "",
 };
 
 let toastTimer = null;
@@ -98,6 +105,7 @@ function setView(name) {
     syncRunStepsForSelectedDate();
     loadSchedules();
     loadJournalPrompt();
+    loadRunPreferences();
   } else {
     hideRunPlan();
   }
@@ -252,25 +260,146 @@ async function loadOverview() {
   const data = await api("/api/overview");
   applyOverviewAuth(data);
   state.username = data.user?.username || null;
+  state.timezone = data.timezone || state.timezone || "Asia/Seoul";
+  state.model = data.model || state.model || "";
+  state.today = data.today || state.today;
+  state.chatCount = data.chat_count || 0;
+  state.journalCount = data.journal_count || 0;
   const tg = data.telegram || {};
-  const userLabel = data.user?.username
-    ? escapeHtml(data.user.username)
-    : "미로그인";
-  const authLabel = tg.linked || tg.authorized
-    ? `TG ${escapeHtml(tg.user?.name || "연동됨")}`
+  state.telegramLabel = tg.linked || tg.authorized
+    ? tg.user?.name
+      ? `연동 · ${tg.user.name}`
+      : tg.user?.id
+        ? `연동 · ${tg.user.id}`
+        : "연동됨"
     : data.authenticated
-      ? "TG 미연동"
+      ? "미연동"
       : "미로그인";
-  if ($("#overview-meta")) {
-    $("#overview-meta").innerHTML = `
-      <div>${escapeHtml(userLabel)}</div>
-      <div>${data.timezone || ""}</div>
-      <div>모델 ${escapeHtml(data.model || "")}</div>
-      <div>업무방 ${data.chat_count || 0} · 일지 ${data.journal_count || 0}</div>
-      <div>${authLabel}</div>
-    `;
-  }
+  renderSidebarAccount();
+  syncRunPreferenceSummaries();
+  applyRunTodayDefaults(state.today);
   if (data.job) renderJob(data.job);
+}
+
+function renderSidebarAccount() {
+  const nameEl = $("#sidebar-account-name");
+  if (nameEl) nameEl.textContent = state.username || "계정";
+  const tipUser = $("#tip-username");
+  const tipCounts = $("#tip-counts");
+  const tipTelegram = $("#tip-telegram");
+  if (tipUser) tipUser.textContent = state.username || "—";
+  if (tipCounts) tipCounts.textContent = `${state.chatCount || 0} / ${state.journalCount || 0}`;
+  if (tipTelegram) tipTelegram.textContent = state.telegramLabel || "—";
+}
+
+function setAccountTipOpen(open) {
+  const btn = $("#sidebar-account");
+  const tip = $("#sidebar-account-tip");
+  if (!btn || !tip) return;
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  tip.classList.toggle("hidden", !open);
+}
+
+function goJournalHome() {
+  if (!state.authorized) return;
+  state.journalSelected = null;
+  setAccountTipOpen(false);
+  setView("journals");
+  renderJournalBrowse();
+  renderJournalPlaceholder();
+  updateJournalScrollFade();
+}
+
+const COMMON_TIMEZONES = [
+  "Asia/Seoul",
+  "Asia/Tokyo",
+  "Asia/Shanghai",
+  "Asia/Singapore",
+  "Asia/Hong_Kong",
+  "Asia/Bangkok",
+  "UTC",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "America/Los_Angeles",
+  "America/New_York",
+  "America/Chicago",
+  "Australia/Sydney",
+];
+
+function timezoneOptions(current) {
+  const values = [...COMMON_TIMEZONES];
+  if (current && !values.includes(current)) values.unshift(current);
+  return values;
+}
+
+function renderMenuOptions(menu, values, selected, attr) {
+  if (!menu) return;
+  menu.innerHTML = values
+    .map(
+      (value) =>
+        `<button type="button" class="settings-menu-item" role="option" data-${attr}="${escapeHtml(value)}" aria-selected="${
+          value === selected ? "true" : "false"
+        }"><span>${escapeHtml(value)}</span><span class="material-symbols-outlined settings-check" aria-hidden="true">check</span></button>`
+    )
+    .join("");
+}
+
+function syncRunPreferenceSummaries() {
+  const tz = state.timezone || "Asia/Seoul";
+  const model = state.model || "—";
+  if ($("#run-timezone")) $("#run-timezone").value = tz;
+  if ($("#run-model")) $("#run-model").value = state.model || "";
+  if ($("#run-timezone-summary")) $("#run-timezone-summary").textContent = tz;
+  if ($("#run-model-summary")) $("#run-model-summary").textContent = model;
+  renderMenuOptions($("#run-timezone-menu"), timezoneOptions(tz), tz, "timezone");
+  const models = state.models?.length ? state.models : state.model ? [state.model] : [];
+  renderMenuOptions($("#run-model-menu"), models, state.model, "model");
+}
+
+function applyRunTodayDefaults(today) {
+  if (!today) return;
+  for (const id of ["run-date", "run-start", "run-end", "run-pick-date"]) {
+    const input = $(`#${id}`);
+    if (input && !input.dataset.touched) input.value = today;
+  }
+}
+
+async function loadRunPreferences() {
+  if (!state.authorized) {
+    syncRunPreferenceSummaries();
+    return;
+  }
+  try {
+    const [prefs, models] = await Promise.all([
+      api("/api/preferences"),
+      api("/api/models").catch(() => ({ models: state.model ? [state.model] : [], current: state.model })),
+    ]);
+    state.timezone = prefs.timezone || state.timezone;
+    state.model = prefs.model || models.current || state.model;
+    state.today = prefs.today || state.today;
+    state.models = models.models || [];
+    if (state.model && !state.models.includes(state.model)) {
+      state.models = [state.model, ...state.models];
+    }
+    syncRunPreferenceSummaries();
+    applyRunTodayDefaults(state.today);
+  } catch (err) {
+    syncRunPreferenceSummaries();
+  }
+}
+
+async function saveRunPreference(payload) {
+  const data = await api("/api/preferences", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  state.timezone = data.timezone || state.timezone;
+  state.model = data.model || state.model;
+  state.today = data.today || state.today;
+  syncRunPreferenceSummaries();
+  applyRunTodayDefaults(state.today);
+  return data;
 }
 
 function parseDay(day) {
@@ -658,14 +787,19 @@ function renderJournalCalendar() {
 
   const yearStart = Math.min(y - 5, today.getFullYear() - 5);
   const yearEnd = Math.max(y + 5, today.getFullYear() + 1);
-  let yearOptions = "";
-  for (let year = yearStart; year <= yearEnd; year += 1) {
-    yearOptions += `<option value="${year}"${year === y ? " selected" : ""}>${year}</option>`;
-  }
-  let monthOptions = "";
-  for (let month = 1; month <= 12; month += 1) {
-    monthOptions += `<option value="${month}"${month === m ? " selected" : ""}>${month}</option>`;
-  }
+  const years = [];
+  for (let year = yearStart; year <= yearEnd; year += 1) years.push(String(year));
+  const months = Array.from({ length: 12 }, (_, i) => String(i + 1));
+
+  const menuItems = (values, selected, attr) =>
+    values
+      .map(
+        (value) =>
+          `<button type="button" class="settings-menu-item" role="option" data-${attr}="${escapeHtml(value)}" aria-selected="${
+            value === String(selected) ? "true" : "false"
+          }"><span>${escapeHtml(value)}</span><span class="material-symbols-outlined settings-check" aria-hidden="true">check</span></button>`
+      )
+      .join("");
 
   root.innerHTML = `
     <div class="cal-head">
@@ -673,14 +807,28 @@ function renderJournalCalendar() {
         <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
       </button>
       <div class="cal-title">
-        <label class="cal-picker">
-          <select id="cal-year" aria-label="년도 선택">${yearOptions}</select>
-          <span class="cal-unit" aria-hidden="true">년</span>
-        </label>
-        <label class="cal-picker">
-          <select id="cal-month" aria-label="월 선택">${monthOptions}</select>
-          <span class="cal-unit" aria-hidden="true">월</span>
-        </label>
+        <div class="settings-disclose cal-picker">
+          <button type="button" id="cal-year-toggle" class="cal-picker-btn" aria-expanded="false" aria-controls="cal-year-menu" aria-haspopup="listbox" aria-label="년도 선택">
+            <span id="cal-year-summary" class="cal-picker-value">${y}</span>
+            <span class="cal-unit" aria-hidden="true">년</span>
+          </button>
+          <div id="cal-year-menu" class="settings-menu cal-menu hidden">
+            <div class="cal-menu-scroll-wrap">
+              <div class="cal-menu-scroll" id="cal-year-scroll" role="listbox" aria-label="년도 선택">${menuItems(years, y, "year")}</div>
+            </div>
+          </div>
+        </div>
+        <div class="settings-disclose cal-picker">
+          <button type="button" id="cal-month-toggle" class="cal-picker-btn" aria-expanded="false" aria-controls="cal-month-menu" aria-haspopup="listbox" aria-label="월 선택">
+            <span id="cal-month-summary" class="cal-picker-value">${m}</span>
+            <span class="cal-unit" aria-hidden="true">월</span>
+          </button>
+          <div id="cal-month-menu" class="settings-menu cal-menu hidden">
+            <div class="cal-menu-scroll-wrap">
+              <div class="cal-menu-scroll" id="cal-month-scroll" role="listbox" aria-label="월 선택">${menuItems(months, m, "month")}</div>
+            </div>
+          </div>
+        </div>
       </div>
       <button type="button" class="icon-btn" id="cal-next" title="다음 달" aria-label="다음 달">
         <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
@@ -706,18 +854,45 @@ function renderJournalCalendar() {
 
   $("#cal-prev")?.addEventListener("click", () => shiftMonth(-1));
   $("#cal-next")?.addEventListener("click", () => shiftMonth(1));
-  $("#cal-year")?.addEventListener("change", (event) => {
-    const nextY = Number(event.target.value);
+
+  const updateCalMenuFade = (menu) => {
+    const scroll = menu?.querySelector(".cal-menu-scroll");
+    const wrap = menu?.querySelector(".cal-menu-scroll-wrap");
+    updateScrollFade(scroll, wrap);
+  };
+
+  const bindCalMenu = (toggleId, menuId, attr, apply) => {
+    const toggle = $(`#${toggleId}`);
+    const menu = $(`#${menuId}`);
+    const scroll = menu?.querySelector(".cal-menu-scroll");
+    toggle?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const open = toggle.getAttribute("aria-expanded") === "true";
+      setSettingsMenuOpen(toggle, menu, !open);
+      if (!open) requestAnimationFrame(() => updateCalMenuFade(menu));
+    });
+    scroll?.addEventListener("scroll", () => updateCalMenuFade(menu), { passive: true });
+    menu?.addEventListener("click", (event) => {
+      const choice = event.target.closest(".settings-menu-item");
+      if (!choice?.dataset[attr]) return;
+      apply(choice.dataset[attr]);
+      closeSettingsMenus();
+    });
+  };
+
+  bindCalMenu("cal-year-toggle", "cal-year-menu", "year", (value) => {
+    const nextY = Number(value);
     if (!Number.isFinite(nextY)) return;
     state.calendarMonth = { y: nextY, m: state.calendarMonth.m };
     renderJournalCalendar();
   });
-  $("#cal-month")?.addEventListener("change", (event) => {
-    const nextM = Number(event.target.value);
+  bindCalMenu("cal-month-toggle", "cal-month-menu", "month", (value) => {
+    const nextM = Number(value);
     if (!Number.isFinite(nextM) || nextM < 1 || nextM > 12) return;
     state.calendarMonth = { y: state.calendarMonth.y, m: nextM };
     renderJournalCalendar();
   });
+
   root.querySelectorAll("button.cal-day").forEach((btn) => {
     btn.addEventListener("click", () => loadJournal(btn.dataset.date));
   });
@@ -1309,7 +1484,108 @@ function setRunMode(mode) {
   $("#run-single-fields")?.classList.toggle("hidden", mode !== "single");
   $("#run-range-fields")?.classList.toggle("hidden", mode !== "range");
   $("#run-pick-fields")?.classList.toggle("hidden", mode !== "pick");
+  $("#run-range-hint")?.classList.toggle("hidden", mode !== "range");
+  $("#run-pick-list")?.classList.toggle("hidden", mode !== "pick");
+  $("#run-pick-hint")?.classList.toggle("hidden", mode !== "pick");
   syncRunStepsForSelectedDate();
+}
+
+const RUN_POLICY_LABEL = {
+  skip: "일지 없는 날만",
+  stale: "소스 변경 시만 재생성",
+  force: "무조건 재생성",
+};
+
+const SCHEDULE_TARGET_LABEL = {
+  yesterday: "어제",
+  today: "오늘",
+};
+
+function closeSettingsMenus(exceptMenu = null) {
+  document.querySelectorAll(".settings-disclose").forEach((wrap) => {
+    const menu = wrap.querySelector(".settings-menu");
+    const toggle = wrap.querySelector("button[aria-expanded]");
+    if (!menu || menu === exceptMenu) return;
+    menu.classList.add("hidden");
+    toggle?.setAttribute("aria-expanded", "false");
+  });
+}
+
+function setSettingsMenuOpen(toggle, menu, open) {
+  if (!toggle || !menu) return;
+  if (open) closeSettingsMenus(menu);
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  menu.classList.toggle("hidden", !open);
+}
+
+function syncMenuSelection(menuSelector, value, attr = "policy") {
+  document.querySelectorAll(`${menuSelector} .settings-menu-item`).forEach((btn) => {
+    const selected = btn.dataset[attr] === value;
+    btn.setAttribute("aria-selected", selected ? "true" : "false");
+  });
+}
+
+function syncRunPolicySummary() {
+  const summary = $("#run-policy-summary");
+  if (!summary) return;
+  const policy = selectedRunPolicy();
+  summary.textContent = RUN_POLICY_LABEL[policy] || RUN_POLICY_LABEL.skip;
+  syncMenuSelection("#run-policy-menu", policy, "policy");
+}
+
+function selectRunPolicy(policy) {
+  const input = document.querySelector(`input[name="run-policy"][value="${policy}"]`);
+  if (!input) return;
+  input.checked = true;
+  syncRunPolicySummary();
+  hideRunPlan();
+  closeSettingsMenus();
+}
+
+function selectedSchedulePolicy() {
+  return $("#schedule-policy")?.value || "skip";
+}
+
+function syncSchedulePolicySummary() {
+  const summary = $("#schedule-policy-summary");
+  const policy = selectedSchedulePolicy();
+  if (summary) summary.textContent = RUN_POLICY_LABEL[policy] || RUN_POLICY_LABEL.skip;
+  syncMenuSelection("#schedule-policy-menu", policy, "policy");
+}
+
+function selectSchedulePolicy(policy) {
+  const input = $("#schedule-policy");
+  if (!input || !RUN_POLICY_LABEL[policy]) return;
+  input.value = policy;
+  syncSchedulePolicySummary();
+  closeSettingsMenus();
+}
+
+function selectedScheduleTarget() {
+  return $("#schedule-target")?.value || "yesterday";
+}
+
+function syncScheduleTargetSummary() {
+  const summary = $("#schedule-target-summary");
+  const target = selectedScheduleTarget();
+  if (summary) summary.textContent = SCHEDULE_TARGET_LABEL[target] || SCHEDULE_TARGET_LABEL.yesterday;
+  syncMenuSelection("#schedule-target-menu", target, "target");
+}
+
+function selectScheduleTarget(target) {
+  const input = $("#schedule-target");
+  if (!input || !SCHEDULE_TARGET_LABEL[target]) return;
+  input.value = target;
+  syncScheduleTargetSummary();
+  closeSettingsMenus();
+}
+
+function schedulePolicyBody(policy = selectedSchedulePolicy()) {
+  return {
+    skip_existing: policy === "skip",
+    regenerate_if_stale: policy === "stale",
+    force: policy === "force",
+  };
 }
 
 function renderRunPickList() {
@@ -1452,7 +1728,6 @@ function renderRunPlan(data) {
   });
 }
 
-const SCHEDULE_TARGET_LABEL = { yesterday: "어제", today: "오늘" };
 const SCHEDULE_STATUS_LABEL = {
   started: "시작됨",
   skipped: "건너뜀",
@@ -1773,16 +2048,11 @@ const SIDEBAR_KEY = "worklog.sidebarCollapsed";
 function applySidebarCollapsed(collapsed) {
   const shell = $("#app-shell");
   const toggle = $("#sidebar-toggle");
-  const logo = $(".brand-logo");
   if (!shell) return;
   shell.classList.toggle("sidebar-collapsed", Boolean(collapsed));
   if (toggle) {
     toggle.setAttribute("aria-label", collapsed ? "사이드바 펼치기" : "사이드바 접기");
     toggle.title = collapsed ? "사이드바 펼치기" : "사이드바 접기";
-  }
-  if (logo) {
-    logo.title = collapsed ? "사이드바 펼치기" : "";
-    logo.style.cursor = collapsed ? "pointer" : "";
   }
   try {
     localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
@@ -1803,9 +2073,17 @@ function initSidebarToggle() {
     const next = !$("#app-shell")?.classList.contains("sidebar-collapsed");
     applySidebarCollapsed(next);
   });
-  $(".brand-logo")?.addEventListener("click", () => {
-    if ($("#app-shell")?.classList.contains("sidebar-collapsed")) {
-      applySidebarCollapsed(false);
+}
+
+function bindSidebarBrand() {
+  const brand = $("#sidebar-brand");
+  if (!brand) return;
+  const go = () => goJournalHome();
+  brand.addEventListener("click", go);
+  brand.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      go();
     }
   });
 }
@@ -1997,6 +2275,13 @@ $("#sidebar-logout")?.addEventListener("click", () => {
 });
 
 initSidebarToggle();
+bindSidebarBrand();
+
+$("#sidebar-account")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const open = $("#sidebar-account")?.getAttribute("aria-expanded") === "true";
+  setAccountTipOpen(!open);
+});
 
 $("#refresh-dialogs").addEventListener("click", loadDialogs);
 $("#dialog-filter").addEventListener("input", (event) => renderDialogs(event.target.value));
@@ -2065,15 +2350,127 @@ $("#run-pick-list")?.addEventListener("click", (event) => {
   removeRunPickDate(chip.dataset.day);
 });
 
-for (const id of ["run-date", "run-start", "run-end"]) {
-  $(`#${id}`)?.addEventListener("change", () => syncRunStepsForSelectedDate());
-  $(`#${id}`)?.addEventListener("input", () => syncRunStepsForSelectedDate());
+for (const id of ["run-date", "run-start", "run-end", "run-pick-date"]) {
+  $(`#${id}`)?.addEventListener("change", (event) => {
+    event.currentTarget.dataset.touched = "1";
+    if (id !== "run-pick-date") syncRunStepsForSelectedDate();
+  });
+  $(`#${id}`)?.addEventListener("input", (event) => {
+    event.currentTarget.dataset.touched = "1";
+    if (id !== "run-pick-date") syncRunStepsForSelectedDate();
+  });
 }
 document.querySelectorAll('input[name="run-policy"]').forEach((input) => {
   input.addEventListener("change", () => {
+    syncRunPolicySummary();
     hideRunPlan();
   });
 });
+
+$("#run-timezone-toggle")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const toggle = $("#run-timezone-toggle");
+  const menu = $("#run-timezone-menu");
+  const open = toggle?.getAttribute("aria-expanded") === "true";
+  setSettingsMenuOpen(toggle, menu, !open);
+});
+
+$("#run-timezone-menu")?.addEventListener("click", async (event) => {
+  const choice = event.target.closest(".settings-menu-item");
+  if (!choice?.dataset.timezone) return;
+  try {
+    closeSettingsMenus();
+    await saveRunPreference({ timezone: choice.dataset.timezone });
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+});
+
+$("#run-model-toggle")?.addEventListener("click", async (event) => {
+  event.stopPropagation();
+  const toggle = $("#run-model-toggle");
+  const menu = $("#run-model-menu");
+  const open = toggle?.getAttribute("aria-expanded") === "true";
+  if (!open) {
+    try {
+      await loadRunPreferences();
+    } catch (_) {
+      /* keep cached */
+    }
+  }
+  setSettingsMenuOpen(toggle, menu, !open);
+});
+
+$("#run-model-menu")?.addEventListener("click", async (event) => {
+  const choice = event.target.closest(".settings-menu-item");
+  if (!choice?.dataset.model) return;
+  try {
+    closeSettingsMenus();
+    await saveRunPreference({ model: choice.dataset.model });
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+});
+
+$("#run-policy-toggle")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const toggle = $("#run-policy-toggle");
+  const menu = $("#run-policy-menu");
+  const open = toggle?.getAttribute("aria-expanded") === "true";
+  setSettingsMenuOpen(toggle, menu, !open);
+});
+
+$("#run-policy-menu")?.addEventListener("click", (event) => {
+  const choice = event.target.closest(".settings-menu-item");
+  if (!choice?.dataset.policy) return;
+  selectRunPolicy(choice.dataset.policy);
+});
+
+$("#schedule-target-toggle")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const toggle = $("#schedule-target-toggle");
+  const menu = $("#schedule-target-menu");
+  const open = toggle?.getAttribute("aria-expanded") === "true";
+  setSettingsMenuOpen(toggle, menu, !open);
+});
+
+$("#schedule-target-menu")?.addEventListener("click", (event) => {
+  const choice = event.target.closest(".settings-menu-item");
+  if (!choice?.dataset.target) return;
+  selectScheduleTarget(choice.dataset.target);
+});
+
+$("#schedule-policy-toggle")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const toggle = $("#schedule-policy-toggle");
+  const menu = $("#schedule-policy-menu");
+  const open = toggle?.getAttribute("aria-expanded") === "true";
+  setSettingsMenuOpen(toggle, menu, !open);
+});
+
+$("#schedule-policy-menu")?.addEventListener("click", (event) => {
+  const choice = event.target.closest(".settings-menu-item");
+  if (!choice?.dataset.policy) return;
+  selectSchedulePolicy(choice.dataset.policy);
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".settings-disclose")) closeSettingsMenus();
+  if (!event.target.closest(".sidebar-account")) setAccountTipOpen(false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeSettingsMenus();
+    setAccountTipOpen(false);
+  }
+});
+
+syncRunPolicySummary();
+syncScheduleTargetSummary();
+syncSchedulePolicySummary();
+syncRunPreferenceSummaries();
+setRunMode(runMode || "single");
 
 $("#prompt-edit")?.addEventListener("click", () => {
   state.journalPromptEditing = true;
@@ -2152,8 +2549,8 @@ $("#schedule-form")?.addEventListener("submit", async (event) => {
       body: JSON.stringify({
         name,
         time,
-        target: $("#schedule-target")?.value || "yesterday",
-        skip_existing: Boolean($("#schedule-skip-existing")?.checked),
+        target: selectedScheduleTarget(),
+        ...schedulePolicyBody(),
         enabled: true,
       }),
     });
