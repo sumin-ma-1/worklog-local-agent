@@ -1016,11 +1016,11 @@ function syncWatchedEditUi() {
   $("#watched-delete-selected")?.classList.toggle("hidden", !editing);
   const editBtn = $("#watched-edit");
   if (editBtn) {
-    editBtn.title = editing ? "완료" : "수정";
-    editBtn.setAttribute("aria-label", editing ? "완료" : "수정");
+    editBtn.title = editing ? "취소" : "수정";
+    editBtn.setAttribute("aria-label", editing ? "취소" : "수정");
     editBtn.classList.toggle("is-active", editing);
     const icon = editBtn.querySelector(".material-symbols-outlined");
-    if (icon) icon.textContent = editing ? "check" : "edit";
+    if (icon) icon.textContent = editing ? "undo" : "edit";
   }
   updateWatchedSelectionUi();
 }
