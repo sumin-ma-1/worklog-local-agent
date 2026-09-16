@@ -24,6 +24,12 @@ from worklog_agent.config import (
     load_config,
     normalize_chat_ref,
 )
+from worklog_agent.journal_prompt import (
+    PromptError,
+    load_system_prompt,
+    reset_system_prompt,
+    save_system_prompt,
+)
 from worklog_agent.schedules import (
     ScheduleError,
     create_schedule,
@@ -153,6 +159,10 @@ class SchedulePatchBody(BaseModel):
     skip_existing: bool | None = None
     regenerate_if_stale: bool | None = None
     force: bool | None = None
+
+
+class JournalPromptBody(BaseModel):
+    sections: list[str] = Field(min_length=1, max_length=20)
 
 
 class AuthBody(BaseModel):
@@ -909,5 +919,23 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         if not delete_schedule(root, schedule_id):
             raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다.")
         return {"deleted": True, "id": schedule_id}
+
+    @app.get("/api/journal-prompt")
+    async def get_journal_prompt(request: Request) -> dict:
+        _, cfg = require_telegram(request)
+        return load_system_prompt(cfg.data_root)
+
+    @app.put("/api/journal-prompt")
+    async def put_journal_prompt(request: Request, body: JournalPromptBody) -> dict:
+        _, cfg = require_telegram(request)
+        try:
+            return save_system_prompt(cfg.data_root, body.sections)
+        except PromptError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/journal-prompt/reset")
+    async def reset_journal_prompt(request: Request) -> dict:
+        _, cfg = require_telegram(request)
+        return reset_system_prompt(cfg.data_root)
 
     return app

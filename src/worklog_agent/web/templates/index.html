@@ -7,7 +7,7 @@
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" sizes="180x180">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=preview-icon-1">
+  <link rel="stylesheet" href="/static/dashboard.css?v=schedule-side-1">
 </head>
 <body class="login-mode">
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
@@ -239,15 +239,15 @@
             <fieldset class="run-options">
               <legend class="sr-only">생성 옵션</legend>
               <label class="run-check">
-                <input type="checkbox" id="run-skip-existing" name="skip_existing">
+                <input type="radio" name="run-policy" id="run-skip-existing" value="skip" checked>
                 일지 없는 날만
               </label>
               <label class="run-check">
-                <input type="checkbox" id="run-regenerate-stale" name="regenerate_if_stale">
+                <input type="radio" name="run-policy" id="run-regenerate-stale" value="stale">
                 소스 변경 시만 재생성
               </label>
               <label class="run-check">
-                <input type="checkbox" id="run-force" name="force">
+                <input type="radio" name="run-policy" id="run-force" value="force">
                 무조건 재생성
               </label>
             </fieldset>
@@ -308,37 +308,58 @@
             </ol>
           </div>
 
-          <div class="schedule-panel">
-            <div class="row-head schedule-head">
-              <h3>예약 실행</h3>
-            </div>
-            <form id="schedule-form" class="schedule-form stack-form">
-              <label>
-                이름
-                <input type="text" id="schedule-name" maxlength="64" placeholder="예: 매일 어제 일지">
-              </label>
-              <div class="run-range-row">
-                <label>
-                  시각
-                  <input type="time" id="schedule-time" value="21:00">
-                </label>
-                <label>
-                  대상
-                  <select id="schedule-target">
-                    <option value="yesterday">어제</option>
-                    <option value="today">오늘</option>
-                  </select>
-                </label>
+          <div class="prompt-panel">
+            <div class="row-head prompt-head">
+              <h3>일지 형식</h3>
+              <div class="row-head-actions" id="prompt-actions">
+                <button type="button" id="prompt-reset" class="icon-btn hidden" title="기본값 복원" aria-label="기본값 복원">
+                  <span class="material-symbols-outlined" aria-hidden="true">rotate_right</span>
+                </button>
+                <button type="button" id="prompt-save" class="icon-btn ok-icon hidden" title="저장" aria-label="저장">
+                  <span class="material-symbols-outlined" aria-hidden="true">save</span>
+                </button>
+                <button type="button" id="prompt-cancel" class="icon-btn hidden" title="취소" aria-label="취소">
+                  <span class="material-symbols-outlined" aria-hidden="true">undo</span>
+                </button>
+                <button type="button" id="prompt-edit" class="icon-btn" title="수정" aria-label="수정">
+                  <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+                </button>
               </div>
-              <label class="run-check">
-                <input type="checkbox" id="schedule-skip-existing" checked>
-                일지 없는 날만
-              </label>
-              <button type="submit" class="ghost-btn schedule-add-btn">예약 추가</button>
-            </form>
-            <ul id="schedule-list" class="schedule-list"></ul>
-            <p class="run-hint schedule-hint">대시보드가 켜져 있으면 매분 자동 확인합니다. 서버 cron은 <code>worklog-agent schedule-tick</code></p>
+            </div>
+            <ul id="prompt-sections" class="prompt-section-list" aria-label="일지 형식"></ul>
           </div>
+        </div>
+
+        <div class="panel schedule-panel">
+          <div class="row-head schedule-head">
+            <h3>예약 실행</h3>
+          </div>
+          <form id="schedule-form" class="schedule-form stack-form">
+            <label>
+              이름
+              <input type="text" id="schedule-name" maxlength="64" placeholder="예: 매일 어제 일지">
+            </label>
+            <div class="run-range-row">
+              <label>
+                시각
+                <input type="time" id="schedule-time" value="21:00">
+              </label>
+              <label>
+                대상
+                <select id="schedule-target">
+                  <option value="yesterday">어제</option>
+                  <option value="today">오늘</option>
+                </select>
+              </label>
+            </div>
+            <label class="run-check">
+              <input type="checkbox" id="schedule-skip-existing" checked>
+              일지 없는 날만
+            </label>
+            <button type="submit" class="ghost-btn schedule-add-btn">예약 추가</button>
+          </form>
+          <ul id="schedule-list" class="schedule-list"></ul>
+          <p class="run-hint schedule-hint">대시보드가 켜져 있으면 매분 자동 확인합니다. 서버 cron은 <code>worklog-agent schedule-tick</code></p>
         </div>
       </section>
 
@@ -374,6 +395,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-  <script src="/static/dashboard.js?v=preview-icon-1"></script>
+  <script src="/static/dashboard.js?v=schedule-panel-1"></script>
 </body>
 </html>

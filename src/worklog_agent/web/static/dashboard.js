@@ -19,6 +19,10 @@ const state = {
   watchedEditMode: false,
   watchedFilter: "",
   watchedSelected: {},
+  journalSections: [],
+  journalPromptDefault: true,
+  journalPromptEditing: false,
+  journalSectionsDraft: [],
 };
 
 let toastTimer = null;
@@ -93,6 +97,7 @@ function setView(name) {
   if (name === "run") {
     syncRunStepsForSelectedDate();
     loadSchedules();
+    loadJournalPrompt();
   }
   if (name === "accounts") {
     loadAccounts();
@@ -1339,35 +1344,17 @@ function removeRunPickDate(day) {
   hideRunPlan();
 }
 
-function syncRunOptionChecks() {
-  const force = $("#run-force");
-  const skip = $("#run-skip-existing");
-  const stale = $("#run-regenerate-stale");
-  if (!force || !skip || !stale) return;
-  if (force.checked) {
-    skip.checked = false;
-    stale.checked = false;
-    skip.disabled = true;
-    stale.disabled = true;
-    return;
-  }
-  skip.disabled = false;
-  stale.disabled = false;
-  if (skip.checked) {
-    stale.checked = false;
-    stale.disabled = true;
-  } else if (stale.checked) {
-    skip.checked = false;
-    skip.disabled = true;
-  }
+function selectedRunPolicy() {
+  const selected = document.querySelector('input[name="run-policy"]:checked');
+  return selected?.value || "skip";
 }
 
 function runOptionsBody() {
-  syncRunOptionChecks();
+  const policy = selectedRunPolicy();
   return {
-    skip_existing: Boolean($("#run-skip-existing")?.checked),
-    regenerate_if_stale: Boolean($("#run-regenerate-stale")?.checked),
-    force: Boolean($("#run-force")?.checked),
+    skip_existing: policy === "skip",
+    regenerate_if_stale: policy === "stale",
+    force: policy === "force",
   };
 }
 
@@ -1460,6 +1447,136 @@ async function loadSchedules() {
   } catch (err) {
     showBanner(err.message, "error");
   }
+}
+
+function syncPromptEditUi() {
+  const editing = state.journalPromptEditing;
+  $("#prompt-edit")?.classList.toggle("hidden", editing);
+  $("#prompt-save")?.classList.toggle("hidden", !editing);
+  $("#prompt-cancel")?.classList.toggle("hidden", !editing);
+  $("#prompt-reset")?.classList.toggle("hidden", !editing);
+  $("#prompt-sections")?.classList.toggle("is-editing", editing);
+}
+
+function currentPromptSections() {
+  return state.journalPromptEditing
+    ? state.journalSectionsDraft
+    : state.journalSections;
+}
+
+function syncPromptDraftFromInputs() {
+  const labels = document.querySelectorAll("#prompt-sections .prompt-section-label.is-editable");
+  if (!labels.length) return;
+  state.journalSectionsDraft = Array.from(labels).map((el) => (el.textContent || "").replace(/\u200b/g, "").trim());
+}
+
+function renderJournalPrompt(focusIndex = null) {
+  $("#prompt-meta")?.remove();
+  const list = $("#prompt-sections");
+  const sections = currentPromptSections();
+  const editing = state.journalPromptEditing;
+  if (list) {
+    const chips = sections.length
+      ? sections
+          .map((name, index) => {
+            if (editing) {
+              return `<li class="prompt-section-chip is-editing" data-index="${index}">
+              <span class="prompt-section-label is-editable" contenteditable="true" role="textbox" data-index="${index}" data-placeholder="이름" aria-label="섹션 이름">${escapeHtml(name)}</span>
+              <button type="button" class="prompt-section-remove" data-index="${index}" title="삭제" aria-label="삭제">
+                <span class="material-symbols-outlined" aria-hidden="true">close</span>
+              </button>
+            </li>`;
+            }
+            return `<li class="prompt-section-chip"><span class="prompt-section-label">${escapeHtml(name)}</span></li>`;
+          })
+          .join("")
+      : editing
+        ? ""
+        : `<li class="empty">섹션이 없습니다.</li>`;
+    const addChip = editing
+      ? `<li class="prompt-section-chip prompt-section-add">
+          <button type="button" class="prompt-section-add-btn" title="섹션 추가" aria-label="섹션 추가">
+            <span class="material-symbols-outlined" aria-hidden="true">add</span>
+          </button>
+        </li>`
+      : "";
+    list.innerHTML = chips + addChip;
+  }
+  syncPromptEditUi();
+  if (focusIndex != null) {
+    const label = document.querySelector(
+      `#prompt-sections .prompt-section-label.is-editable[data-index="${focusIndex}"]`
+    );
+    if (label) {
+      label.focus();
+      const range = document.createRange();
+      range.selectNodeContents(label);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
+  }
+}
+
+async function loadJournalPrompt() {
+  if (!state.authorized) return;
+  try {
+    const data = await api("/api/journal-prompt");
+    state.journalSections = Array.isArray(data.sections) ? data.sections.slice() : [];
+    state.journalPromptDefault = Boolean(data.is_default);
+    state.journalPromptEditing = false;
+    state.journalSectionsDraft = state.journalSections.slice();
+    renderJournalPrompt();
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+}
+
+async function saveJournalPrompt() {
+  syncPromptDraftFromInputs();
+  const sections = state.journalSectionsDraft
+    .map((name) => String(name || "").trim())
+    .filter(Boolean);
+  try {
+    const data = await api("/api/journal-prompt", {
+      method: "PUT",
+      body: JSON.stringify({ sections }),
+    });
+    state.journalSections = Array.isArray(data.sections) ? data.sections.slice() : [];
+    state.journalPromptDefault = Boolean(data.is_default);
+    state.journalPromptEditing = false;
+    state.journalSectionsDraft = state.journalSections.slice();
+    renderJournalPrompt();
+    showBanner("일지 형식을 저장했습니다.", "ok");
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+}
+
+async function resetJournalPrompt() {
+  if (!window.confirm("섹션을 기본값으로 되돌릴까요?")) return;
+  try {
+    const data = await api("/api/journal-prompt/reset", { method: "POST", body: "{}" });
+    state.journalSections = Array.isArray(data.sections) ? data.sections.slice() : [];
+    state.journalPromptDefault = Boolean(data.is_default);
+    state.journalPromptEditing = false;
+    state.journalSectionsDraft = state.journalSections.slice();
+    renderJournalPrompt();
+    showBanner("기본 섹션으로 복원했습니다.", "ok");
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+}
+
+function addPromptSection() {
+  if (!state.journalPromptEditing) return;
+  syncPromptDraftFromInputs();
+  if (state.journalSectionsDraft.length >= 20) {
+    showBanner("섹션은 20개까지 가능합니다.", "error");
+    return;
+  }
+  state.journalSectionsDraft.push("");
+  renderJournalPrompt(state.journalSectionsDraft.length - 1);
 }
 
 function renderSchedules(items) {
@@ -1928,12 +2045,76 @@ for (const id of ["run-date", "run-start", "run-end"]) {
   $(`#${id}`)?.addEventListener("change", () => syncRunStepsForSelectedDate());
   $(`#${id}`)?.addEventListener("input", () => syncRunStepsForSelectedDate());
 }
-for (const id of ["run-skip-existing", "run-regenerate-stale", "run-force"]) {
-  $(`#${id}`)?.addEventListener("change", () => {
-    syncRunOptionChecks();
+document.querySelectorAll('input[name="run-policy"]').forEach((input) => {
+  input.addEventListener("change", () => {
     hideRunPlan();
   });
-}
+});
+
+$("#prompt-edit")?.addEventListener("click", () => {
+  state.journalPromptEditing = true;
+  state.journalSectionsDraft = state.journalSections.slice();
+  renderJournalPrompt();
+});
+
+$("#prompt-cancel")?.addEventListener("click", () => {
+  state.journalPromptEditing = false;
+  state.journalSectionsDraft = state.journalSections.slice();
+  renderJournalPrompt();
+});
+
+$("#prompt-save")?.addEventListener("click", () => {
+  saveJournalPrompt().catch((err) => showBanner(err.message, "error"));
+});
+
+$("#prompt-reset")?.addEventListener("click", () => {
+  resetJournalPrompt().catch((err) => showBanner(err.message, "error"));
+});
+
+$("#prompt-sections")?.addEventListener("input", (event) => {
+  if (!state.journalPromptEditing) return;
+  const label = event.target.closest?.(".prompt-section-label.is-editable");
+  if (!label) return;
+  const index = Number(label.dataset.index);
+  if (!Number.isInteger(index) || index < 0 || index >= state.journalSectionsDraft.length) return;
+  const text = (label.textContent || "").replace(/\u200b/g, "");
+  if (text.length > 40) {
+    label.textContent = text.slice(0, 40);
+    // keep caret at end
+    const range = document.createRange();
+    range.selectNodeContents(label);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
+  state.journalSectionsDraft[index] = (label.textContent || "").replace(/\u200b/g, "");
+});
+
+$("#prompt-sections")?.addEventListener("keydown", (event) => {
+  if (!state.journalPromptEditing) return;
+  const label = event.target.closest?.(".prompt-section-label.is-editable");
+  if (!label) return;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    addPromptSection();
+  }
+});
+
+$("#prompt-sections")?.addEventListener("click", (event) => {
+  if (!state.journalPromptEditing) return;
+  if (event.target.closest(".prompt-section-add-btn")) {
+    addPromptSection();
+    return;
+  }
+  const btn = event.target.closest(".prompt-section-remove");
+  if (!btn) return;
+  syncPromptDraftFromInputs();
+  const index = Number(btn.dataset.index);
+  if (!Number.isInteger(index) || index < 0 || index >= state.journalSectionsDraft.length) return;
+  state.journalSectionsDraft.splice(index, 1);
+  renderJournalPrompt();
+});
 
 $("#schedule-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1986,8 +2167,6 @@ $("#schedule-list")?.addEventListener("click", async (event) => {
     }
   }
 });
-
-syncRunOptionChecks();
 
 setAuthMode("login");
 loadOverview()

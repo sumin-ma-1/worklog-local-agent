@@ -1,32 +1,13 @@
 from __future__ import annotations
 
 import json
-from textwrap import dedent
 
 from worklog_agent.config import AppConfig
+from worklog_agent.journal_prompt import default_system_prompt
 from worklog_agent.models import DailyBundle
 from worklog_agent.ollama import chat as ollama_chat
 
-JOURNAL_SYSTEM_PROMPT = dedent(
-    """
-    당신은 업무 채팅 기록을 바탕으로 실무자가 바로 쓸 수 있는 일지를 작성하는 비서입니다.
-    추측하지 말고 주어진 메시지와 첨부 목록에만 근거하세요.
-    시간 순서를 유지하고, 사람 이름·파일명·결정 사항은 원문 표현을 보존하세요.
-    출력은 반드시 아래 마크다운 형식을 지키세요.
-
-    # 업무 일지 ({date})
-
-    ## 요약
-    ## 수행 업무
-    ## 논의 / 결정 사항
-    ## 요청 / 협업
-    ## 이슈 및 리스크
-    ## 산출물 / 첨부
-    ## 다음 액션
-
-    해당 항목에 내용이 없으면 "없음"이라고 적습니다.
-    """
-).strip()
+JOURNAL_SYSTEM_PROMPT = default_system_prompt()
 
 
 def render_draft(bundle: DailyBundle) -> str:
@@ -85,12 +66,14 @@ async def generate_journal(
     *,
     model: str | None = None,
 ) -> str:
+    from worklog_agent.journal_prompt import resolve_system_prompt
+
     payload = bundle.to_prompt_payload()
     user_prompt = (
         f"날짜: {bundle.date} ({bundle.timezone})\n"
         "아래 JSON은 하루치 업무 채팅입니다. 한국어 업무 일지로 정리하세요.\n\n"
         f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
     )
-    system = JOURNAL_SYSTEM_PROMPT.format(date=bundle.date)
+    system = resolve_system_prompt(config.data_root, bundle.date)
     content = await ollama_chat(config, system, user_prompt, model=model)
     return content.strip() + "\n"

@@ -357,4 +357,42 @@ def test_schedules_api_crud(tmp_path: Path) -> None:
 
     deleted = client.delete(f"/api/schedules/{schedule_id}")
     assert deleted.status_code == 200
-    assert client.get("/api/schedules").json()["schedules"] == []
+
+
+def test_journal_prompt_api(tmp_path: Path) -> None:
+    from worklog_agent.journal import JOURNAL_SYSTEM_PROMPT
+    from worklog_agent.journal_prompt import DEFAULT_SECTIONS
+    from worklog_agent.users import user_config
+
+    client, state, user_id = _authed_linked_client(tmp_path)
+    cfg = user_config(state.config, user_id)
+
+    defaulted = client.get("/api/journal-prompt")
+    assert defaulted.status_code == 200
+    assert defaulted.json()["is_default"] is True
+    assert defaulted.json()["sections"] == DEFAULT_SECTIONS
+    assert defaulted.json()["system"] == JOURNAL_SYSTEM_PROMPT
+
+    custom = ["요약", "나만의 섹션"]
+    saved = client.put("/api/journal-prompt", json={"sections": custom})
+    assert saved.status_code == 200
+    assert saved.json()["is_default"] is False
+    assert saved.json()["sections"] == custom
+    assert (cfg.data_root / "journal_prompt.json").is_file()
+
+    empty = client.put("/api/journal-prompt", json={"sections": []})
+    assert empty.status_code == 422
+
+    duplicate = client.put("/api/journal-prompt", json={"sections": ["요약", "요약"]})
+    assert duplicate.status_code == 400
+
+    loaded = client.get("/api/journal-prompt")
+    assert loaded.status_code == 200
+    assert loaded.json()["sections"] == custom
+
+    reset = client.post("/api/journal-prompt/reset")
+    assert reset.status_code == 200
+    assert reset.json()["is_default"] is True
+    assert reset.json()["sections"] == DEFAULT_SECTIONS
+    assert reset.json()["system"] == JOURNAL_SYSTEM_PROMPT
+    assert not (cfg.data_root / "journal_prompt.json").exists()

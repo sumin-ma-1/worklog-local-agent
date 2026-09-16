@@ -1090,6 +1090,15 @@ main {
   color: var(--accent);
 }
 
+#watched-actions {
+  gap: 2px;
+}
+
+#watched-actions .icon-btn {
+  width: 22px;
+  height: 22px;
+}
+
 .watched-panel > .search-field {
   flex: 0 0 auto;
 }
@@ -1518,7 +1527,24 @@ button[type="submit"]:disabled,
 }
 
 .run-panel {
+  max-width: none;
+  min-width: 0;
+}
+
+#view-run {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  align-items: start;
   max-width: 560px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1200px) {
+  #view-run {
+    max-width: 1100px;
+    grid-template-columns: minmax(0, 560px) minmax(280px, 1fr);
+  }
 }
 
 .run-pick-add {
@@ -1566,10 +1592,11 @@ button[type="submit"]:disabled,
 }
 
 .run-mode-tabs {
-  display: inline-flex;
+  display: flex;
+  width: fit-content;
   gap: 4px;
   padding: 4px;
-  margin-bottom: 16px;
+  margin: 0 auto 16px;
   border-radius: 999px;
   background: #eef2f8;
 }
@@ -1808,15 +1835,187 @@ button[type="submit"]:disabled,
   font-size: 13px;
 }
 
-.schedule-panel {
+.prompt-panel {
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
 
-.schedule-head h3 {
+.prompt-head h3 {
   margin: 0;
   font-size: 15px;
+}
+
+#prompt-actions {
+  gap: 2px;
+}
+
+#prompt-actions .icon-btn {
+  width: 22px;
+  height: 22px;
+}
+
+#prompt-reset .material-symbols-outlined {
+  font-size: 15px;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
+}
+
+.prompt-section-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.prompt-section-list .empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.prompt-section-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.prompt-section-chip:nth-child(7n + 1) {
+  background: #e8eefc;
+  border-color: #c7d4f5;
+  color: #1e3a8a;
+}
+
+.prompt-section-chip:nth-child(7n + 2) {
+  background: #e7f6ef;
+  border-color: #b9e2cd;
+  color: #166534;
+}
+
+.prompt-section-chip:nth-child(7n + 3) {
+  background: #f3eaf8;
+  border-color: #ddc8ee;
+  color: #6b21a8;
+}
+
+.prompt-section-chip:nth-child(7n + 4) {
+  background: #fff4e5;
+  border-color: #f5d9a8;
+  color: #9a3412;
+}
+
+.prompt-section-chip:nth-child(7n + 5) {
+  background: #e8f6fb;
+  border-color: #b6e0ef;
+  color: #0e7490;
+}
+
+.prompt-section-chip:nth-child(7n + 6) {
+  background: #fdecef;
+  border-color: #f3c4cd;
+  color: #9f1239;
+}
+
+.prompt-section-chip:nth-child(7n + 7) {
+  background: #eef2f7;
+  border-color: #d0dae8;
+  color: #334155;
+}
+
+.prompt-section-chip.is-editing {
+  padding: 5px 4px 5px 12px;
+}
+
+.prompt-section-label {
+  white-space: nowrap;
+}
+
+.prompt-section-label.is-editable {
+  outline: none;
+  cursor: text;
+  min-width: 1em;
+}
+
+.prompt-section-label.is-editable:empty::before {
+  content: attr(data-placeholder);
+  color: inherit;
+  opacity: 0.45;
+}
+
+.prompt-section-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  padding: 2px;
+  border-radius: 999px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.prompt-section-remove:hover {
+  opacity: 1;
+  background: rgb(255 255 255 / 0.55);
+}
+
+.prompt-section-remove .material-symbols-outlined {
+  font-size: 16px;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
+}
+
+.prompt-section-chip.prompt-section-add {
+  padding: 0;
+  width: auto;
+  background: #f8fafc;
+  border-color: var(--line);
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.prompt-section-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  width: 34px;
+  height: 30px;
+  border-radius: 999px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.prompt-section-add-btn:hover {
+  color: var(--ink);
+  background: #eef2f7;
+}
+
+.prompt-section-add-btn .material-symbols-outlined {
+  font-size: 18px;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
+}
+
+.schedule-panel {
+  min-height: 0;
+  min-width: 0;
+}
+
+.schedule-head h3 {
+  margin: 0;
+  font-size: 17px;
+  color: var(--accent);
 }
 
 .schedule-form {
