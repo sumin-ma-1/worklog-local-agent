@@ -2186,3 +2186,78 @@ body.share-mode {
   width: 48px;
   text-align: right;
 }
+
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #journal-detail,
+  #journal-detail * {
+    visibility: visible;
+  }
+
+  #toast,
+  #app-sidebar,
+  .journal-browse,
+  .journal-actions,
+  .list-scroll-wrap::after {
+    display: none !important;
+  }
+
+  body,
+  #app-shell,
+  main,
+  #view-journals,
+  .split,
+  #journal-detail {
+    display: block !important;
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    border: 0 !important;
+  }
+
+  #journal-detail {
+    position: absolute !important;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+  }
+
+  #journal-detail .row-head {
+    margin-bottom: 16px !important;
+  }
+
+  #journal-detail .row-head h3 {
+    color: #111 !important;
+    font-size: 20px !important;
+  }
+
+  #journal-detail .list-scroll-wrap,
+  #journal-detail .list-scroll {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  #journal-detail .journal-attach {
+    margin-top: 20px;
+    page-break-inside: avoid;
+  }
+
+  #journal-detail .markdown-body a {
+    color: #111 !important;
+    text-decoration: none !important;
+  }
+}

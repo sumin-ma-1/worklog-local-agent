@@ -755,6 +755,9 @@ function renderJournalDetail(data, { editing = false } = {}) {
       </button>
     `
     : `
+      <button type="button" id="journal-print" class="icon-btn" title="인쇄" aria-label="인쇄" ${hasJournal ? "" : "disabled"}>
+        <span class="material-symbols-outlined" aria-hidden="true">print</span>
+      </button>
       <button type="button" id="journal-share" class="icon-btn" title="공유 링크" aria-label="공유 링크" ${hasJournal ? "" : "disabled"}>
         <span class="material-symbols-outlined" aria-hidden="true">link</span>
       </button>
@@ -788,10 +791,23 @@ function renderJournalDetail(data, { editing = false } = {}) {
     requestAnimationFrame(updateJournalScrollFade);
     return;
   }
+  $("#journal-print")?.addEventListener("click", () => printJournal());
   $("#journal-share")?.addEventListener("click", () => shareJournal(data.date));
   $("#journal-edit")?.addEventListener("click", () => renderJournalDetail(data, { editing: true }));
   $("#journal-delete")?.addEventListener("click", () => deleteJournal(data.date));
   updateJournalScrollFade();
+}
+
+function printJournal() {
+  document.body.classList.add("printing-journal");
+  const cleanup = () => {
+    document.body.classList.remove("printing-journal");
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+  // Safari / some browsers may not fire afterprint reliably
+  setTimeout(cleanup, 1000);
 }
 
 async function shareJournal(day) {
