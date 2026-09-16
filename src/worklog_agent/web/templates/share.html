@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Worklog · {{ day }}</title>
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
-  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/dashboard.css?v=file-icons-1">
 </head>
 <body class="share-mode">
   <main class="share-shell">
@@ -28,6 +28,7 @@
           {% if attachments %}
             {% for file in attachments %}
             <li>
+              <img class="attach-icon" src="{{ file.icon }}" alt="" width="20" height="20">
               <a href="{{ file.href }}" target="_blank" rel="noreferrer">{{ file.name }}</a>
             </li>
             {% endfor %}

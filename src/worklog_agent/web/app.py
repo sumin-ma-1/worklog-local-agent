@@ -59,6 +59,7 @@ from worklog_agent.users import (
 )
 from worklog_agent.web.auth_session import COOKIE_USER, SessionStore
 from worklog_agent.journal_meta import delete_journal_meta
+from worklog_agent.web.file_icons import file_icon_src
 from worklog_agent.web.run_plan import dates_to_run, plan_run_days, resolve_run_dates
 from worklog_agent.web.run_service import (
     EmptyPlanError,
@@ -361,6 +362,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             {
                 **file,
                 "href": f"/api/share/{token}/file?path={quote(str(file.get('relative') or ''), safe='')}",
+                "icon": file_icon_src(str(file.get("name") or "")),
             }
             for file in payload["attachments"]
         ]

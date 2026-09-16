@@ -35,7 +35,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-worklog_agent = ["web/static/*", "web/templates/*"]
+worklog_agent = ["web/static/*", "web/static/file-icons/*", "web/templates/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

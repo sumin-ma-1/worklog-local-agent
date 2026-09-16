@@ -297,6 +297,51 @@ function stripJournalLeadHeading(markdown) {
   return String(markdown || "").replace(/^#\s*업무\s*일지\s*\([^)]+\)\s*\n+/m, "");
 }
 
+const FILE_ICON_KEYS = new Set([
+  "7z", "aac", "ai", "avi", "bmp", "bz2", "c", "conf", "cpp", "cs", "css", "csv",
+  "db", "deb", "dmg", "doc", "dockerfile", "docm", "docx", "dropbox", "eml", "eps",
+  "etc", "exe", "flac", "flv", "gdrive", "gif", "go", "gz", "htm", "html", "hwp",
+  "ics", "img", "indd", "ini", "ipynb", "iso", "java", "jpeg", "jpg", "js", "json",
+  "key", "log", "m4a", "mat", "mbox", "md", "mkv", "mov", "mp3", "mp4", "msg", "msi",
+  "numbers", "ogg", "one", "onex", "pages", "pdf", "php", "pkg", "png", "ppt", "pptm",
+  "pptx", "psd", "pst", "py", "r", "rar", "rb", "rdata", "rpm", "sql", "sqlite", "svg",
+  "tar", "tiff", "tsv", "txt", "url", "vcf", "wav", "webm", "webp", "wmv", "xls",
+  "xlsm", "xlsx", "xml", "yaml", "yml", "zip",
+]);
+
+const FILE_ICON_ALIASES = {
+  tif: "tiff",
+  htm: "html",
+  jpeg: "jpg",
+  markdown: "md",
+  yml: "yaml",
+};
+
+function fileIconKey(filename) {
+  const name = String(filename || "").split(/[/\\]/).pop() || "";
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0 || dot === name.length - 1) return "etc";
+  const ext = name.slice(dot + 1).toLowerCase();
+  const key = FILE_ICON_ALIASES[ext] || ext;
+  return FILE_ICON_KEYS.has(key) ? key : "etc";
+}
+
+function fileIconSrc(filename) {
+  return `/static/file-icons/${fileIconKey(filename)}.svg`;
+}
+
+function renderAttachmentItems(attachments) {
+  return (attachments || [])
+    .map(
+      (file) =>
+        `<li>
+          <img class="attach-icon" src="${escapeHtml(fileIconSrc(file.name))}" alt="" width="20" height="20">
+          <a href="/api/attachments/file?path=${encodeURIComponent(file.relative)}" target="_blank" rel="noreferrer">${escapeHtml(file.name)}</a>
+        </li>`
+    )
+    .join("");
+}
+
 function weekIndexInMonth(y, m, d) {
   const firstWeekday = new Date(y, m - 1, 1).getDay();
   return Math.floor((d + firstWeekday - 1) / 7) + 1;
@@ -728,12 +773,7 @@ function updateJournalScrollFade() {
 }
 
 function renderJournalDetail(data, { editing = false } = {}) {
-  const attach = (data.attachments || [])
-    .map(
-      (file) =>
-        `<li><a href="/api/attachments/file?path=${encodeURIComponent(file.relative)}" target="_blank" rel="noreferrer">${escapeHtml(file.name)}</a></li>`
-    )
-    .join("");
+  const attach = renderAttachmentItems(data.attachments);
   const markdown = data.markdown || "";
   const hasJournal = Boolean(data.has_journal || markdown);
   const body = editing

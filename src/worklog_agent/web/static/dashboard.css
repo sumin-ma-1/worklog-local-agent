@@ -2075,7 +2075,42 @@ button[type="submit"]:disabled,
   opacity: 1;
 }
 
-.attach-list a { color: var(--accent-hover); }
+.attach-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.attach-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  justify-content: flex-start;
+}
+
+.attach-list li.empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.attach-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+
+.attach-list a {
+  color: var(--accent-hover);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 
 @media (max-width: 900px) {
   .app-shell {
