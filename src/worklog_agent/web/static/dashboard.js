@@ -287,6 +287,16 @@ function weekdayLabel(y, m, d) {
   return ["일", "월", "화", "수", "목", "금", "토"][new Date(y, m - 1, d).getDay()];
 }
 
+function formatJournalDayTitle(day) {
+  const parsed = parseDay(day);
+  if (!parsed) return day || "";
+  return `${parsed.y}년 ${parsed.m}월 ${parsed.d}일 ${weekdayLabel(parsed.y, parsed.m, parsed.d)}요일`;
+}
+
+function stripJournalLeadHeading(markdown) {
+  return String(markdown || "").replace(/^#\s*업무\s*일지\s*\([^)]+\)\s*\n+/m, "");
+}
+
 function weekIndexInMonth(y, m, d) {
   const firstWeekday = new Date(y, m - 1, 1).getDay();
   return Math.floor((d + firstWeekday - 1) / 7) + 1;
@@ -732,7 +742,7 @@ function renderJournalDetail(data, { editing = false } = {}) {
       </div>`
     : `<div class="list-scroll-wrap" id="journal-detail-wrap">
         <div class="list-scroll" id="journal-detail-scroll">
-          <div class="journal-body markdown-body">${renderMarkdown(markdown)}</div>
+          <div class="journal-body markdown-body">${renderMarkdown(stripJournalLeadHeading(markdown))}</div>
         </div>
       </div>`;
   const actions = editing
@@ -757,7 +767,7 @@ function renderJournalDetail(data, { editing = false } = {}) {
     `;
   $("#journal-detail").innerHTML = `
     <div class="row-head">
-      <h3>${escapeHtml(data.date)}</h3>
+      <h3>${escapeHtml(formatJournalDayTitle(data.date))}</h3>
       <div class="journal-actions">${actions}</div>
     </div>
     ${body}
