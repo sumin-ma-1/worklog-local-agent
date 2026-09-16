@@ -397,9 +397,6 @@ function renderJournalList() {
     return;
   }
 
-  if (state.journalSelected) ensureExplorerPathForDay(state.journalSelected);
-  else if (state.journals[0]?.date) ensureExplorerPathForDay(state.journals[0].date);
-
   const tree = buildJournalExplorerTree(state.journals);
   list.classList.add("explorer-list");
   list.innerHTML = tree
@@ -599,6 +596,10 @@ async function loadJournals(selectDay) {
     updateJournalScrollFade();
     return;
   }
+  if (!state.journalSelected) {
+    state.journalSelected = state.journals[0].date;
+  }
+  ensureExplorerPathForDay(state.journalSelected);
   const selected = parseDay(state.journalSelected);
   if (selected) {
     state.calendarMonth = { y: selected.y, m: selected.m };
@@ -705,6 +706,7 @@ async function loadJournal(day) {
   state.journalSelected = day;
   const parsed = parseDay(day);
   if (parsed) state.calendarMonth = { y: parsed.y, m: parsed.m };
+  ensureExplorerPathForDay(day);
   renderJournalBrowse();
   const data = await api(`/api/journals/${day}`);
   renderJournalDetail(data);

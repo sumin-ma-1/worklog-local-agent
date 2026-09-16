@@ -614,6 +614,16 @@ main {
   min-height: 34px;
 }
 
+.explorer-list .explorer-row.link {
+  padding: 7px 8px 7px calc(8px + var(--depth, 0) * 16px);
+  background: transparent;
+  color: inherit;
+}
+
+.explorer-list .explorer-file .explorer-row {
+  padding-left: calc(8px + var(--depth, 0) * 16px);
+}
+
 .explorer-row:hover {
   background: #eef3fb;
 }
