@@ -3216,8 +3216,37 @@ button[type="submit"]:disabled,
   text-align: right;
   outline: none !important;
   box-shadow: none !important;
+}
+
+.settings-row-input input[type="text"],
+.settings-row-input select {
   appearance: none;
   -webkit-appearance: none;
+}
+
+.settings-row-input input[type="time"] {
+  position: relative;
+  min-width: 5.5rem;
+  cursor: pointer;
+  /* Safari: keep native time UI; appearance:none hides the picker */
+  appearance: auto;
+  -webkit-appearance: auto;
+}
+
+.settings-row-input .settings-trailing:has(> input[type="time"]) {
+  position: relative;
+  min-height: 1.35em;
+}
+
+.settings-row-input input[type="time"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .settings-row-input input[type="text"]::placeholder {
