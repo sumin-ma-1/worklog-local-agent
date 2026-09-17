@@ -304,6 +304,7 @@ body:not(.login-mode) .login-screen {
 }
 
 .sidebar {
+  position: relative;
   display: flex;
   flex-direction: column;
   background: linear-gradient(180deg, #0b1f44 0%, #122a5c 100%);
@@ -313,6 +314,56 @@ body:not(.login-mode) .login-screen {
   max-height: 100vh;
   border-right: 1px solid #0a1836;
   overflow: visible;
+}
+
+.sidebar-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  z-index: 25;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+}
+
+.sidebar-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  border-radius: 999px;
+  background: transparent;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+  opacity: 0;
+}
+
+.sidebar-resize:hover::after,
+.sidebar-resize:focus-visible::after,
+.app-shell.is-resizing-sidebar .sidebar-resize::after {
+  background: rgba(255, 255, 255, 0.45);
+  opacity: 1;
+}
+
+.sidebar-resize:focus-visible {
+  outline: none;
+}
+
+.app-shell.sidebar-collapsed .sidebar-resize {
+  display: none;
+}
+
+.app-shell.is-resizing-sidebar {
+  transition: none;
+  cursor: col-resize;
+  user-select: none;
+}
+
+.app-shell.is-resizing-sidebar main {
+  pointer-events: none;
 }
 
 .sidebar-top {
@@ -333,6 +384,19 @@ body:not(.login-mode) .login-screen {
   border-radius: 10px;
   padding: 2px 4px 2px 2px;
   margin: -2px -4px -2px -2px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 0%,
+    #000 max(0px, calc(100% - 28px)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 0%,
+    #000 max(0px, calc(100% - 28px)),
+    transparent 100%
+  );
 }
 
 .sidebar-brand:hover h1,
@@ -360,9 +424,12 @@ body:not(.login-mode) .login-screen {
   letter-spacing: -0.03em;
   color: #ffffff;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .sidebar-toggle {
+  position: relative;
+  z-index: 2;
   flex: 0 0 auto;
   width: 32px;
   height: 32px;
@@ -535,6 +602,9 @@ nav { display: grid; gap: 8px; }
   display: flex;
   justify-content: center;
   flex: 0 0 auto;
+  overflow: visible;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 .app-shell.sidebar-collapsed .brand-logo {
