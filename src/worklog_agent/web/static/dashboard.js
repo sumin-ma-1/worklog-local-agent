@@ -460,9 +460,11 @@ function applyOverviewAuth(data) {
     return;
   }
   if (!linked) {
-    showTelegramPanel(tg.phone);
+    showTelegramPanel();
     applyAuthVisibility(false);
-    renderLoginForms(data.login_stage || "idle");
+    if (tg.user) {
+      $("#login-status").textContent = `연동됨 · ${tg.user.name || ""}`;
+    }
     return;
   }
   applyAuthVisibility(true);
@@ -1465,7 +1467,7 @@ async function shareJournalLibrary() {
     const label = data.mode === "snapshot" ? "현재 버전 고정" : "최신 반영";
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(url);
-      showBanner(`${label} 전체 일지 공유 링크를 복사했습니다. (${data.count || 0}일)`, "ok");
+      showBanner(`${label} 전체 일지 공유 링크를 복사했습니다.`, "ok");
     } else {
       window.prompt("전체 일지 공유 링크", url);
       showBanner(`${label} 전체 일지 공유 링크를 만들었습니다.`, "ok");
@@ -2064,11 +2066,12 @@ async function addChat(id, title) {
       title ||
       state.dialogs.find((item) => String(item.id) === String(id))?.title ||
       null;
+    const label = String(known || "").trim() || String(id);
     await api("/api/chats", {
       method: "POST",
       body: JSON.stringify({ id, title: known || null }),
     });
-    showBanner(`업무방 ${id} 을(를) 추가했습니다.`, "ok");
+    showBanner(`업무방 ${label} 을(를) 추가했습니다.`, "ok");
     await Promise.all([loadWatched(), loadOverview()]);
     if (state.dialogs.length) {
       state.dialogs = state.dialogs.map((item) =>
@@ -2083,8 +2086,14 @@ async function addChat(id, title) {
 
 async function removeChat(id) {
   try {
+    const label =
+      String(
+        state.watchedChats.find((item) => String(item.id) === String(id))?.title ||
+          state.dialogs.find((item) => String(item.id) === String(id))?.title ||
+          ""
+      ).trim() || String(id);
     await api("/api/chats/delete", { method: "POST", body: JSON.stringify({ id }) });
-    showBanner(`업무방 ${id} 을(를) 삭제했습니다.`, "ok");
+    showBanner(`업무방 ${label} 을(를) 삭제했습니다.`, "ok");
     await Promise.all([loadWatched(), loadOverview()]);
     if (state.dialogs.length) {
       state.dialogs = state.dialogs.map((item) =>
@@ -2925,18 +2934,14 @@ $("#account-form")?.addEventListener("submit", async (event) => {
     $("#password-input").value = "";
     if ($("#password-confirm-input")) $("#password-confirm-input").value = "";
     const linked = Boolean(data.telegram?.linked || data.telegram?.authorized);
-    if (linked) {
-      state.pendingRegistration = false;
-      showBanner(state.authMode === "register" ? "가입되었습니다." : "로그인되었습니다.", "ok");
-      await enterDashboard();
-    } else {
-      state.pendingRegistration = state.authMode === "register";
-      showTelegramPanel(data.telegram?.phone);
+    state.pendingRegistration = false;
+    showBanner(state.authMode === "register" ? "가입되었습니다." : "로그인되었습니다.", "ok");
+    if (!linked) {
+      showTelegramPanel();
       applyAuthVisibility(false);
-      if (!data.telegram?.api_ready) {
-        showBanner("서버에 TELEGRAM_API_ID / HASH 설정이 필요합니다.", "error");
-      }
+      return;
     }
+    await enterDashboard();
   } catch (err) {
     showBanner(err.message, "error");
   }
@@ -2950,13 +2955,14 @@ $("#login-form").addEventListener("submit", async (event) => {
     return;
   }
   const submit = $("#login-submit");
-  const submitLabel = submit?.querySelector(".auth-submit-label");
   const status = $("#login-status");
   const countryTrigger = $("#login-country-trigger");
   const phoneInput = $("#login-phone-input");
-  const prevLabel = submitLabel?.textContent || "텔레그램 연동";
-  if (submit) submit.disabled = true;
-  if (submitLabel) submitLabel.textContent = "코드 전송 중";
+  if (submit) {
+    submit.disabled = true;
+    submit.classList.add("is-busy");
+    submit.setAttribute("aria-busy", "true");
+  }
   if (countryTrigger) countryTrigger.disabled = true;
   setCountryMenuOpen(false);
   if (phoneInput) phoneInput.disabled = true;
@@ -2982,8 +2988,11 @@ $("#login-form").addEventListener("submit", async (event) => {
     }
     showBanner(err.message, "error");
   } finally {
-    if (submit) submit.disabled = false;
-    if (submitLabel) submitLabel.textContent = prevLabel;
+    if (submit) {
+      submit.disabled = false;
+      submit.classList.remove("is-busy");
+      submit.setAttribute("aria-busy", "false");
+    }
     if (countryTrigger) countryTrigger.disabled = false;
     if (phoneInput) phoneInput.disabled = false;
   }
@@ -3176,17 +3185,42 @@ $("#run-plan-close")?.addEventListener("click", () => hideRunPlan());
 
 $("#run-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  if ($("#run-button")?.disabled) return;
+  setRunButtonBusy(true);
+  lastJobStatus = "running";
+  renderJobSteps({ running: true, current: "collect" });
   try {
     const body = buildRunBody();
     const job = await api("/api/run", {
       method: "POST",
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60000),
     });
-    lastJobStatus = "running";
+    lastJobStatus = job.status || "running";
     renderJob(job);
-    pollJob();
+    if (job.status === "running") pollJob();
   } catch (err) {
-    showBanner(err.message, "error");
+    const timedOut = err?.name === "TimeoutError" || err?.name === "AbortError";
+    try {
+      const job = await api("/api/job");
+      if (job?.status === "running") {
+        lastJobStatus = "running";
+        renderJob(job);
+        pollJob();
+        if (timedOut) return;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    lastJobStatus = "idle";
+    setRunButtonBusy(false);
+    renderJobSteps({ running: false });
+    showBanner(
+      timedOut
+        ? "생성 요청이 지연되고 있습니다. 잠시 후 상태를 다시 확인하세요."
+        : err.message,
+      "error"
+    );
   }
 });
 

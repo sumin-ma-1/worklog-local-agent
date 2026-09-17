@@ -7,7 +7,7 @@
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" sizes="180x180">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=withdraw-1">
+  <link rel="stylesheet" href="/static/dashboard.css?v=dock-edge-1">
 </head>
 <body class="login-mode">
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
@@ -71,10 +71,16 @@
             </span>
           </label>
           <button type="submit" id="login-submit" class="auth-submit auth-submit-telegram">
-            <svg class="telegram-logo" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
-              <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8-1.56 7.36c-.12.54-.43.67-.87.42l-2.4-1.77-1.16 1.12c-.13.13-.24.24-.49.24l.17-2.45 4.47-4.04c.19-.17-.04-.27-.3-.1l-5.52 3.48-2.38-.74c-.52-.16-.53-.52.11-.77l9.3-3.58c.43-.16.81.1.67.73z"/>
-            </svg>
-            <span class="auth-submit-label">텔레그램 연동</span>
+            <span class="auth-submit-idle">
+              <svg class="telegram-logo" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8-1.56 7.36c-.12.54-.43.67-.87.42l-2.4-1.77-1.16 1.12c-.13.13-.24.24-.49.24l.17-2.45 4.47-4.04c.19-.17-.04-.27-.3-.1l-5.52 3.48-2.38-.74c-.52-.16-.53-.52.11-.77l9.3-3.58c.43-.16.81.1.67.73z"/>
+              </svg>
+              <span class="auth-submit-label">텔레그램 연동</span>
+            </span>
+            <span class="auth-submit-busy" aria-hidden="true">
+              <span class="material-symbols-outlined auth-submit-spin" aria-hidden="true">progress_activity</span>
+              <span class="auth-submit-busy-label">코드 전송 중</span>
+            </span>
           </button>
         </form>
 
@@ -435,15 +441,14 @@
                 <span class="material-symbols-outlined run-preview-off hidden" aria-hidden="true">visibility_off</span>
                 <span class="run-preview-label">미리보기</span>
               </button>
-              <button type="submit" id="run-button" class="btn-with-icon">
+              <button type="submit" id="run-button" class="action-btn btn-with-icon">
                 <span class="run-button-idle">
                   <span class="material-symbols-outlined" aria-hidden="true">backup</span>
                   생성
                 </span>
                 <span class="run-button-busy" aria-hidden="true">
-                  <span class="busy-dot"></span>
-                  <span class="busy-dot"></span>
-                  <span class="busy-dot"></span>
+                  <span class="material-symbols-outlined run-button-spin" aria-hidden="true">progress_activity</span>
+                  생성 중
                 </span>
               </button>
             </div>
@@ -577,7 +582,7 @@
                 <input type="hidden" id="schedule-policy" value="skip">
               </div>
             </div>
-            <button type="submit" class="ghost-btn schedule-add-btn btn-with-icon">
+            <button type="submit" class="action-btn schedule-add-btn btn-with-icon">
               <span class="material-symbols-outlined" aria-hidden="true">add</span>
               예약 추가
             </button>
@@ -618,6 +623,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-  <script src="/static/dashboard.js?v=admin-tg-name-2"></script>
+  <script src="/static/dashboard.js?v=tg-required-1"></script>
 </body>
 </html>

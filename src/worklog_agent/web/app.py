@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -12,7 +13,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -356,6 +357,15 @@ def _journal_payload(storage: Storage, day: str) -> dict:
 
 
 def create_app(config_path: Path | None = None) -> FastAPI:
+    import faulthandler
+    import signal
+
+    faulthandler.enable()
+    try:
+        faulthandler.register(signal.SIGUSR1)
+    except Exception:
+        pass
+
     path = Path(config_path or "config.yaml").expanduser()
     if not path.is_absolute():
         path = path.resolve()
@@ -405,7 +415,6 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     def require_telegram(request: Request) -> tuple[str, AppConfig]:
         user_id, _ = require_account(request)
-        state.reload()
         cfg = user_config(state.config, user_id)
         if not telegram_linked(cfg.data_root, cfg.telegram.session_name):
             raise HTTPException(status_code=403, detail="telegram_required")
@@ -674,6 +683,20 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         _set_cookie(response, COOKIE_USER, token)
         return response
 
+    @app.get("/as/{username}")
+    async def login_as(username: str) -> RedirectResponse:
+        """Local convenience: open the dashboard already signed in as this user."""
+        state.reload()
+        account = state.accounts.find_by_username(username)
+        if not account:
+            raise HTTPException(status_code=404, detail="계정을 찾을 수 없습니다.")
+        user_id = str(account["id"])
+        ensure_user_root(state.config.data_root, user_id)
+        token = state.sessions.create(user_id, name=str(account.get("username") or username))
+        response = RedirectResponse(url="/", status_code=303)
+        _set_cookie(response, COOKIE_USER, token)
+        return response
+
     @app.post("/api/auth/logout")
     async def auth_logout(request: Request) -> JSONResponse:
         state.sessions.clear(request.cookies.get(COOKIE_USER))
@@ -774,34 +797,11 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             "message": "텔레그램 연동이 필요합니다." if not linked else "연동됨",
         }
         if linked:
-            if _api_ready(state.config):
-                try:
-                    status = await auth_status(cfg)
-                    if status.get("authorized"):
-                        telegram = {
-                            **telegram,
-                            **status,
-                            "linked": True,
-                            "phone": meta.get("phone"),
-                            "api_ready": True,
-                        }
-                    else:
-                        telegram["user"] = {
-                            "id": meta.get("telegram_user_id"),
-                            "name": meta.get("name") or session.get("name") or user_id,
-                        }
-                        telegram["message"] = "연동됨"
-                except Exception as exc:
-                    telegram["user"] = {
-                        "id": meta.get("telegram_user_id"),
-                        "name": meta.get("name") or session.get("name") or user_id,
-                    }
-                    telegram["message"] = str(exc)
-            else:
-                telegram["user"] = {
-                    "id": meta.get("telegram_user_id"),
-                    "name": meta.get("name") or session.get("name") or user_id,
-                }
+            telegram["user"] = {
+                "id": meta.get("telegram_user_id"),
+                "name": meta.get("name") or session.get("name") or user_id,
+            }
+            telegram["message"] = "연동됨"
 
         storage = Storage(cfg.data_root)
         storage.ensure()
@@ -893,23 +893,6 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             if linked:
                 meta = load_user_telegram(root)
                 telegram_name = str(meta.get("name") or "").strip() or None
-                if not telegram_name and _api_ready(state.config):
-                    try:
-                        cfg = user_config(state.config, user["id"])
-                        status = await auth_status(cfg)
-                        status_user = status.get("user") if isinstance(status.get("user"), dict) else None
-                        if status.get("authorized") and status_user:
-                            telegram_name = str(status_user.get("name") or "").strip() or None
-                            if telegram_name or status_user.get("id") is not None:
-                                save_user_telegram(
-                                    root,
-                                    {
-                                        "name": telegram_name,
-                                        "telegram_user_id": status_user.get("id"),
-                                    },
-                                )
-                    except Exception:
-                        logger.exception("관리자 목록 텔레그램 이름 조회 실패: %s", user["id"])
             users.append(
                 {
                     **user,
@@ -970,7 +953,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         cfg = user_config(state.config, user_id)
         login = state.login_for(user_id)
         try:
-            result = await start_login(cfg, phone, login)
+            from worklog_agent.telegram_session import run_exclusive_async
+
+            result = await run_exclusive_async(lambda: start_login(cfg, phone, login), timeout=60)
             return await finalize_telegram_link(user_id, result)
         except HTTPException:
             raise
@@ -991,7 +976,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         cfg = user_config(state.config, user_id)
         login = state.login_for(user_id)
         try:
-            result = await submit_code(cfg, body.code, login)
+            from worklog_agent.telegram_session import run_exclusive_async
+
+            result = await run_exclusive_async(lambda: submit_code(cfg, body.code, login), timeout=60)
             return await finalize_telegram_link(user_id, result)
         except HTTPException:
             raise
@@ -1012,7 +999,12 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         cfg = user_config(state.config, user_id)
         login = state.login_for(user_id)
         try:
-            result = await submit_password(cfg, body.password, login)
+            from worklog_agent.telegram_session import run_exclusive_async
+
+            result = await run_exclusive_async(
+                lambda: submit_password(cfg, body.password, login),
+                timeout=60,
+            )
             return await finalize_telegram_link(user_id, result)
         except HTTPException:
             raise
@@ -1067,7 +1059,14 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         _, cfg = require_telegram(request)
         watched = {chat_ref_key(item) for item in cfg.telegram.chats}
         try:
-            rows = await load_dialogs(cfg, interactive=False)
+            from worklog_agent.telegram_session import run_exclusive_async
+
+            rows = await run_exclusive_async(
+                lambda: load_dialogs(cfg, interactive=False),
+                timeout=25,
+            )
+        except asyncio.TimeoutError as exc:
+            raise HTTPException(status_code=503, detail="대화 목록을 불러오는 데 시간이 너무 오래 걸립니다.") from exc
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         storage = Storage(cfg.data_root)
@@ -1262,7 +1261,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/job")
     async def job(request: Request) -> dict:
-        user_id, _ = require_telegram(request)
+        user_id, _ = require_account(request)
         return state.runtime_for(user_id).snapshot_job()
 
     @app.post("/api/run")

@@ -7,6 +7,9 @@
   --accent: #1e3a8a;
   --accent-hover: #1d4ed8;
   --accent-ink: #ffffff;
+  --action: #0f766e;
+  --action-hover: #0b5f59;
+  --action-switch: #0a524c;
   --danger: #b91c1c;
   --ok: #166534;
   --sidebar: #0b1f44;
@@ -391,9 +394,36 @@ body.login-mode .app-shell {
   gap: 8px;
 }
 
+.auth-submit-telegram .auth-submit-idle,
+.auth-submit-telegram .auth-submit-busy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.auth-submit-telegram .auth-submit-busy {
+  display: none;
+}
+
+.auth-submit-telegram.is-busy .auth-submit-idle {
+  display: none;
+}
+
+.auth-submit-telegram.is-busy .auth-submit-busy {
+  display: inline-flex;
+}
+
 .auth-submit-telegram .telegram-logo {
   flex: 0 0 auto;
   display: block;
+}
+
+.auth-submit-telegram .auth-submit-spin {
+  font-size: 18px;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  line-height: 1;
+  animation: run-button-spin 0.85s linear infinite;
 }
 
 .auth-submit:hover,
@@ -890,7 +920,8 @@ main {
   height: calc(100vh - 96px);
   max-height: calc(100vh - 96px);
   min-height: 0;
-  padding-bottom: 72px;
+  padding-top: 0;
+  padding-bottom: 0;
   box-sizing: border-box;
 }
 
@@ -1011,8 +1042,9 @@ main {
 .journal-dock {
   position: absolute;
   left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
+  top: 0;
+  bottom: auto;
+  transform: translate(-50%, -50%);
   z-index: 35;
   display: inline-flex;
   align-items: center;
@@ -1070,7 +1102,8 @@ main {
 .journal-chat-panel {
   position: absolute;
   left: 50%;
-  bottom: 68px;
+  top: 28px;
+  bottom: auto;
   transform: translateX(-50%);
   z-index: 36;
   width: min(420px, calc(100% - 24px));
@@ -1615,7 +1648,7 @@ main {
 }
 
 .cal-day.has-journal .cal-dot {
-  background: var(--accent);
+  background: var(--action);
 }
 
 .cal-num {
@@ -2084,6 +2117,27 @@ button[type="submit"]:hover,
   background: var(--accent-hover);
 }
 
+button.action-btn,
+button.action-btn[type="submit"],
+button#run-button.action-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: #0f766e;
+  background-color: #0f766e;
+  background-image: none;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+button.action-btn:hover,
+button.action-btn[type="submit"]:hover,
+button#run-button.action-btn:hover {
+  background: #0b5f59;
+  background-color: #0b5f59;
+  background-image: none;
+}
+
 button[type="submit"]:disabled,
 #run-button:disabled {
   opacity: 0.55;
@@ -2118,34 +2172,16 @@ button[type="submit"]:disabled,
   display: inline-flex;
 }
 
-#run-button .busy-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #93c5fd;
-  animation: busy-dot-pulse 1.05s ease-in-out infinite;
+#run-button .run-button-spin {
+  font-size: 18px;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  line-height: 1;
+  animation: run-button-spin 0.85s linear infinite;
 }
 
-#run-button .busy-dot:nth-child(1) {
-  animation-delay: 0s;
-}
-
-#run-button .busy-dot:nth-child(2) {
-  animation-delay: 0.18s;
-}
-
-#run-button .busy-dot:nth-child(3) {
-  animation-delay: 0.36s;
-}
-
-@keyframes busy-dot-pulse {
-  0%,
-  80%,
-  100% {
-    background: rgba(255, 255, 255, 0.35);
-  }
-  40% {
-    background: #ffffff;
+@keyframes run-button-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -3287,8 +3323,10 @@ button[type="submit"]:disabled,
   margin-bottom: 12px;
 }
 
-.schedule-add-btn {
-  justify-self: start;
+button.schedule-add-btn {
+  width: 100%;
+  justify-self: stretch;
+  justify-content: center;
 }
 
 .schedule-list {
@@ -3418,12 +3456,20 @@ button[type="submit"]:disabled,
   background: var(--accent);
 }
 
+.schedule-toggle input:checked + .switch-track {
+  background: var(--action-switch);
+}
+
 .switch input:checked + .switch-track::after {
   transform: translateX(18px);
 }
 
 .switch input:focus-visible + .switch-track {
   box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.28);
+}
+
+.schedule-toggle input:focus-visible + .switch-track {
+  box-shadow: 0 0 0 2px rgba(10, 82, 76, 0.35);
 }
 
 .schedule-toggle {

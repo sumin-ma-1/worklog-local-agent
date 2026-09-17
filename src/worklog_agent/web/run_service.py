@@ -46,7 +46,10 @@ class UserRuntime:
             current = dict(self.job.__dict__)
             current.update(kwargs)
             self.job = JobState(**current)  # type: ignore[arg-type]
-            return self.snapshot_job()
+            payload = dict(self.job.__dict__)
+            payload["dates"] = list(payload.get("dates") or [])
+            payload["results"] = list(payload.get("results") or [])
+            return payload
 
     def snapshot_job(self) -> dict:
         with self.job_lock:
