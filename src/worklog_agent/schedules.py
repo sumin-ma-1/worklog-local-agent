@@ -22,6 +22,38 @@ def schedules_path(user_root: Path) -> Path:
     return Path(user_root) / "schedules.json"
 
 
+def _legacy_nested_schedules_path(user_root: Path) -> Path:
+    """과거 버그: users/<id>/users/<id>/schedules.json"""
+    root = Path(user_root)
+    return root / "users" / root.name / "schedules.json"
+
+
+def migrate_legacy_schedules(user_root: Path) -> None:
+    """중첩 경로에 남은 예약을 올바른 users/<id>/schedules.json 으로 옮긴다."""
+    root = Path(user_root)
+    correct = schedules_path(root)
+    legacy = _legacy_nested_schedules_path(root)
+    if not legacy.is_file():
+        return
+    if correct.is_file():
+        try:
+            legacy.unlink()
+        except OSError:
+            pass
+        return
+    try:
+        correct.parent.mkdir(parents=True, exist_ok=True)
+        legacy.replace(correct)
+        nested_dir = legacy.parent
+        if nested_dir.is_dir() and not any(nested_dir.iterdir()):
+            nested_dir.rmdir()
+        parent = nested_dir.parent
+        if parent.is_dir() and parent.name == "users" and not any(parent.iterdir()):
+            parent.rmdir()
+    except OSError:
+        pass
+
+
 def _read_json(path: Path, default: Any) -> Any:
     if not path.is_file():
         return default
@@ -57,6 +89,7 @@ def parse_schedule_target(value: str) -> str:
 
 
 def load_schedules(user_root: Path) -> list[dict[str, Any]]:
+    migrate_legacy_schedules(user_root)
     raw = _read_json(schedules_path(user_root), {"schedules": []})
     items = raw.get("schedules") if isinstance(raw, dict) else []
     if not isinstance(items, list):

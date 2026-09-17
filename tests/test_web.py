@@ -413,6 +413,8 @@ def test_schedules_api_crud(tmp_path: Path) -> None:
     )
     assert created.status_code == 200
     schedule_id = created.json()["schedule"]["id"]
+    assert (root / "schedules.json").is_file()
+    assert not (root / "users" / user_id / "schedules.json").exists()
 
     listed = client.get("/api/schedules")
     assert listed.status_code == 200
@@ -428,6 +430,25 @@ def test_schedules_api_crud(tmp_path: Path) -> None:
 
     deleted = client.delete(f"/api/schedules/{schedule_id}")
     assert deleted.status_code == 200
+
+
+def test_schedules_migrate_legacy_nested_path(tmp_path: Path) -> None:
+    from worklog_agent.schedules import create_schedule, load_schedules, migrate_legacy_schedules
+
+    root = tmp_path / "users" / "u1"
+    legacy_dir = root / "users" / "u1"
+    legacy_dir.mkdir(parents=True)
+    create_schedule(
+        legacy_dir,
+        {"name": "옛 예약", "time": "09:00", "target": "yesterday"},
+    )
+    assert (legacy_dir / "schedules.json").is_file()
+    migrate_legacy_schedules(root)
+    assert (root / "schedules.json").is_file()
+    assert not (legacy_dir / "schedules.json").exists()
+    items = load_schedules(root)
+    assert len(items) == 1
+    assert items[0]["name"] == "옛 예약"
 
 
 def test_journal_prompt_api(tmp_path: Path) -> None:

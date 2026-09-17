@@ -1366,38 +1366,34 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/schedules")
     async def list_schedules(request: Request) -> dict:
-        user_id, cfg = require_telegram(request)
-        root = user_root(cfg.data_root, user_id)
-        return {"schedules": load_schedules(root)}
+        _, cfg = require_telegram(request)
+        return {"schedules": load_schedules(cfg.data_root)}
 
     @app.post("/api/schedules")
     async def add_schedule(request: Request, body: ScheduleBody) -> dict:
-        user_id, cfg = require_telegram(request)
-        root = user_root(cfg.data_root, user_id)
+        _, cfg = require_telegram(request)
         try:
-            item = create_schedule(root, body.model_dump())
+            item = create_schedule(cfg.data_root, body.model_dump())
         except ScheduleError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"schedule": item}
 
     @app.patch("/api/schedules/{schedule_id}")
     async def patch_schedule(request: Request, schedule_id: str, body: SchedulePatchBody) -> dict:
-        user_id, cfg = require_telegram(request)
-        root = user_root(cfg.data_root, user_id)
+        _, cfg = require_telegram(request)
         payload = body.model_dump(exclude_unset=True)
         if not payload:
             raise HTTPException(status_code=400, detail="변경할 항목이 없습니다.")
         try:
-            item = update_schedule(root, schedule_id, payload)
+            item = update_schedule(cfg.data_root, schedule_id, payload)
         except ScheduleError as exc:
             raise HTTPException(status_code=404 if "찾을" in str(exc) else 400, detail=str(exc)) from exc
         return {"schedule": item}
 
     @app.delete("/api/schedules/{schedule_id}")
     async def remove_schedule(request: Request, schedule_id: str) -> dict:
-        user_id, cfg = require_telegram(request)
-        root = user_root(cfg.data_root, user_id)
-        if not delete_schedule(root, schedule_id):
+        _, cfg = require_telegram(request)
+        if not delete_schedule(cfg.data_root, schedule_id):
             raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다.")
         return {"deleted": True, "id": schedule_id}
 
