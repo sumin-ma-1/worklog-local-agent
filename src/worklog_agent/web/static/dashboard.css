@@ -1044,6 +1044,7 @@ main {
   left: 50%;
   top: 0;
   bottom: auto;
+  right: auto;
   transform: translate(-50%, -50%);
   z-index: 35;
   display: inline-flex;
@@ -1059,6 +1060,56 @@ main {
   box-shadow:
     0 10px 28px rgba(15, 27, 45, 0.12),
     0 2px 6px rgba(15, 27, 45, 0.06);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.journal-dock.is-dragging {
+  cursor: grabbing;
+  box-shadow:
+    0 14px 34px rgba(15, 27, 45, 0.16),
+    0 3px 8px rgba(15, 27, 45, 0.08);
+}
+
+.journal-dock.is-edge-top {
+  top: 0;
+  bottom: auto;
+  left: var(--dock-offset, 50%);
+  right: auto;
+  transform: translate(-50%, -50%);
+  flex-direction: row;
+  padding: 6px 14px;
+}
+
+.journal-dock.is-edge-bottom {
+  top: auto;
+  bottom: 0;
+  left: var(--dock-offset, 50%);
+  right: auto;
+  transform: translate(-50%, 50%);
+  flex-direction: row;
+  padding: 6px 14px;
+}
+
+.journal-dock.is-edge-left {
+  top: var(--dock-offset, 50%);
+  bottom: auto;
+  left: 0;
+  right: auto;
+  transform: translate(-50%, -50%);
+  flex-direction: column;
+  padding: 14px 6px;
+}
+
+.journal-dock.is-edge-right {
+  top: var(--dock-offset, 50%);
+  bottom: auto;
+  left: auto;
+  right: 0;
+  transform: translate(50%, -50%);
+  flex-direction: column;
+  padding: 14px 6px;
 }
 
 .journal-dock-btn {
@@ -1074,6 +1125,7 @@ main {
   cursor: pointer;
   opacity: 0.78;
   transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  touch-action: manipulation;
 }
 
 .journal-dock-btn .material-symbols-outlined {

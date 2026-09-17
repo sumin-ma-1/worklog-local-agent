@@ -2023,9 +2023,140 @@ async function runJournalFromChat(dates, label) {
   }
 }
 
+const JOURNAL_DOCK_POS_KEY = "worklog.journalDockPos";
+let journalDockDidDrag = false;
+let journalDockPos = { edge: "top", offset: 0.5 };
+
+function readJournalDockPos() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(JOURNAL_DOCK_POS_KEY) || "{}");
+    const edge = String(raw.edge || "top");
+    const offset = Number(raw.offset);
+    if (["top", "bottom", "left", "right"].includes(edge)) {
+      journalDockPos.edge = edge;
+    }
+    if (Number.isFinite(offset)) {
+      journalDockPos.offset = Math.min(0.92, Math.max(0.08, offset));
+    }
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function persistJournalDockPos() {
+  try {
+    localStorage.setItem(JOURNAL_DOCK_POS_KEY, JSON.stringify(journalDockPos));
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function applyJournalDockPos() {
+  const dock = $("#journal-dock");
+  if (!dock) return;
+  dock.classList.remove("is-edge-top", "is-edge-bottom", "is-edge-left", "is-edge-right");
+  dock.classList.add(`is-edge-${journalDockPos.edge}`);
+  dock.style.setProperty("--dock-offset", `${(journalDockPos.offset * 100).toFixed(2)}%`);
+}
+
+function clampDockOffset(edge, clientX, clientY, viewRect, dockRect) {
+  if (edge === "top" || edge === "bottom") {
+    const half = viewRect.width > 0 ? dockRect.width / 2 / viewRect.width : 0.08;
+    const t = (clientX - viewRect.left) / Math.max(1, viewRect.width);
+    return Math.min(1 - half, Math.max(half, t));
+  }
+  const half = viewRect.height > 0 ? dockRect.height / 2 / viewRect.height : 0.08;
+  const t = (clientY - viewRect.top) / Math.max(1, viewRect.height);
+  return Math.min(1 - half, Math.max(half, t));
+}
+
+function nearestDockEdge(clientX, clientY, viewRect) {
+  const dTop = Math.abs(clientY - viewRect.top);
+  const dBottom = Math.abs(viewRect.bottom - clientY);
+  const dLeft = Math.abs(clientX - viewRect.left);
+  const dRight = Math.abs(viewRect.right - clientX);
+  const min = Math.min(dTop, dBottom, dLeft, dRight);
+  if (min === dTop) return "top";
+  if (min === dBottom) return "bottom";
+  if (min === dLeft) return "left";
+  return "right";
+}
+
+function updateDockFromPointer(clientX, clientY) {
+  const view = $("#view-journals");
+  const dock = $("#journal-dock");
+  if (!view || !dock) return;
+  const viewRect = view.getBoundingClientRect();
+  const edge = nearestDockEdge(clientX, clientY, viewRect);
+  journalDockPos.edge = edge;
+  applyJournalDockPos();
+  const dockRect = dock.getBoundingClientRect();
+  journalDockPos.offset = clampDockOffset(edge, clientX, clientY, viewRect, dockRect);
+  applyJournalDockPos();
+}
+
+function initJournalDockPosition() {
+  const dock = $("#journal-dock");
+  const view = $("#view-journals");
+  if (!dock || !view) return;
+  readJournalDockPos();
+  applyJournalDockPos();
+
+  let dragging = false;
+  let startX = 0;
+  let startY = 0;
+  const THRESHOLD = 6;
+
+  const onMove = (event) => {
+    if (!dragging) return;
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (!journalDockDidDrag && Math.hypot(dx, dy) < THRESHOLD) return;
+    journalDockDidDrag = true;
+    dock.classList.add("is-dragging");
+    updateDockFromPointer(event.clientX, event.clientY);
+  };
+
+  const onUp = (event) => {
+    if (!dragging) return;
+    dragging = false;
+    dock.classList.remove("is-dragging");
+    try {
+      dock.releasePointerCapture?.(event.pointerId);
+    } catch (_) {
+      /* ignore */
+    }
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    window.removeEventListener("pointercancel", onUp);
+    if (journalDockDidDrag) {
+      updateDockFromPointer(event.clientX, event.clientY);
+      persistJournalDockPos();
+    }
+  };
+
+  dock.addEventListener("pointerdown", (event) => {
+    if (event.button != null && event.button !== 0) return;
+    // 버튼 클릭은 유지하되, 드래그 시작하면 클릭 무시
+    dragging = true;
+    journalDockDidDrag = false;
+    startX = event.clientX;
+    startY = event.clientY;
+    dock.setPointerCapture?.(event.pointerId);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  });
+
+  window.addEventListener("resize", () => {
+    applyJournalDockPos();
+  });
+}
+
 function initJournalDock() {
   readJournalLayout();
   applyJournalLayout();
+  initJournalDockPosition();
   syncJournalChatBotLink();
   syncJournalChatEmpty();
   syncJournalChatSize();
@@ -2037,6 +2168,12 @@ function initJournalDock() {
   }
 
   $("#journal-dock")?.addEventListener("click", async (event) => {
+    if (journalDockDidDrag) {
+      event.preventDefault();
+      event.stopPropagation();
+      journalDockDidDrag = false;
+      return;
+    }
     const btn = event.target.closest?.(".journal-dock-btn");
     if (!btn) return;
     const action = btn.dataset.dock;
