@@ -210,6 +210,23 @@ def _today(config: AppConfig) -> str:
     return datetime.now(ZoneInfo(config.timezone)).date().isoformat()
 
 
+def _format_shared_at(value: str | None, tz_name: str) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        when = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    try:
+        local = when.astimezone(ZoneInfo(tz_name))
+    except Exception:
+        local = when.astimezone(timezone.utc)
+    return local.strftime("%Y-%m-%d %H:%M")
+
+
 def _cookie_kwargs() -> dict:
     return {
         "httponly": True,
@@ -337,6 +354,13 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=403, detail="관리자만 접근할 수 있습니다.")
         return user_id, account
 
+    def shared_by_username(user_dir: Path) -> str | None:
+        account = state.accounts.get(user_dir.name)
+        if not account:
+            return None
+        name = str(account.get("username") or "").strip()
+        return name or None
+
     def me_payload(user_id: str, account: dict) -> dict:
         state.reload()
         root = ensure_user_root(state.config.data_root, user_id)
@@ -387,6 +411,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         if not found:
             raise HTTPException(status_code=404, detail="공유 링크가 없거나 만료되었습니다.")
         user_dir, meta = found
+        shared_by = shared_by_username(user_dir)
+        shared_at = _format_shared_at(str(meta.get("created_at") or ""), state.config.timezone)
         if meta.get("scope") == "library":
             storage = Storage(user_dir)
             dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
@@ -408,31 +434,22 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                     "token_json": json.dumps(token),
                     "journals": items,
                     "journals_json": json.dumps(items, ensure_ascii=False),
+                    "shared_by": shared_by,
+                    "shared_at": shared_at,
                 },
             )
         day = str(meta.get("day") or "")
         if not _DAY_RE.fullmatch(day):
             raise HTTPException(status_code=404, detail="공유 링크가 올바르지 않습니다.")
-        storage = Storage(user_dir)
-        payload = _journal_payload(storage, day)
-        attachments = [
-            {
-                **file,
-                "href": f"/api/share/{token}/file?path={quote(str(file.get('relative') or ''), safe='')}",
-                "icon": file_icon_src(str(file.get("name") or "")),
-            }
-            for file in payload["attachments"]
-        ]
         return templates.TemplateResponse(
             request,
             "share.html",
             {
                 "day": day,
-                "markdown": payload["markdown"],
-                "markdown_json": json.dumps(payload["markdown"] or ""),
-                "has_journal": payload["has_journal"],
-                "attachments": attachments,
                 "token": token,
+                "token_json": json.dumps(token),
+                "shared_by": shared_by,
+                "shared_at": shared_at,
             },
         )
 
@@ -444,6 +461,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="공유 링크가 없거나 만료되었습니다.")
         user_dir, meta = found
         storage = Storage(user_dir)
+        shared_by = shared_by_username(user_dir)
+        shared_at = _format_shared_at(str(meta.get("created_at") or ""), state.config.timezone)
         if meta.get("scope") == "library":
             if day:
                 day = _require_day(day)
@@ -456,6 +475,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                     }
                     for file in payload["attachments"]
                 ]
+                payload["shared_by"] = shared_by
+                payload["shared_at"] = shared_at
                 return payload
             dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
             journals = []
@@ -468,9 +489,25 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                         "attachments": len(payload["attachments"]),
                     }
                 )
-            return {"scope": "library", "journals": journals}
+            return {
+                "scope": "library",
+                "journals": journals,
+                "shared_by": shared_by,
+                "shared_at": shared_at,
+            }
         day = _require_day(str(meta.get("day") or ""))
-        return _journal_payload(storage, day)
+        payload = _journal_payload(storage, day)
+        payload["attachments"] = [
+            {
+                **file,
+                "href": f"/api/share/{token}/file?path={quote(str(file.get('relative') or ''), safe='')}",
+                "icon": file_icon_src(str(file.get("name") or "")),
+            }
+            for file in payload["attachments"]
+        ]
+        payload["shared_by"] = shared_by
+        payload["shared_at"] = shared_at
+        return payload
 
     @app.get("/api/share/{token}/file")
     async def share_file(token: str, path: str = Query(..., min_length=1)) -> FileResponse:

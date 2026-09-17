@@ -3,26 +3,44 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Worklog · 공유 일지</title>
+  <title>Worklog · {% if shared_by %}{{ shared_by }}의 공유 일지{% else %}공유 일지{% endif %}</title>
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=share-cal-1">
+  <link rel="stylesheet" href="/static/dashboard.css?v=share-scroll-3">
 </head>
 <body class="share-mode">
+  <script>document.documentElement.classList.add("share-page");</script>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   <main class="share-shell share-library-shell">
+    <header class="share-head">
+      <img class="brand-logo" src="/static/worklog.jpg" alt="Worklog" width="36" height="36">
+      <div class="share-head-text">
+        <div class="share-brand">Worklog</div>
+        <h1>{% if shared_by %}{{ shared_by }}의 공유 일지{% else %}공유된 일지{% endif %}</h1>
+      </div>
+      {% if shared_at %}
+      <p class="share-at">{{ shared_at }} 공유</p>
+      {% endif %}
+    </header>
+
     <div class="share-library-layout">
       <div class="share-library-browse">
         <div class="panel share-calendar-panel">
           <div id="share-calendar" class="journal-calendar" aria-label="공유 일지 달력"></div>
         </div>
         <div class="panel share-library-list-panel">
-          <ul id="share-journal-list" class="share-journal-list" aria-label="공유 일지 목록"></ul>
+          <div class="list-scroll-wrap" id="share-list-wrap">
+            <div class="list-scroll" id="share-list-scroll">
+              <ul id="share-journal-list" class="list explorer-list" aria-label="공유 일지 목록"></ul>
+            </div>
+          </div>
         </div>
       </div>
       <article class="panel share-panel share-library-detail" id="share-detail">
         <div class="journal-placeholder">
-          <h3 class="journal-placeholder-title">일지를 선택하세요</h3>
-          <p class="journal-placeholder-hint">달력이나 목록에서 날짜를 고르면 내용이 표시됩니다.</p>
+          <img class="journal-placeholder-art" src="/static/worklog-place.png" alt="" width="280" height="280">
+          <h3 class="journal-placeholder-title">선택된 일지 없음</h3>
+          <p class="journal-placeholder-hint">달력이나 목록에서 날짜를 선택하세요.</p>
         </div>
       </article>
     </div>
@@ -33,13 +51,37 @@
     const TOKEN = {{ token_json|safe }};
     const JOURNALS = {{ journals_json|safe }};
     const byDate = new Map(JOURNALS.map((item) => [item.date, item]));
-    let selectedDay = JOURNALS[0]?.date || null;
+    const explorerOpen = {};
+    let selectedDay = null;
+    let currentMarkdown = "";
+    let toastTimer = null;
     let calendarMonth = (() => {
-      const match = /^(\d{4})-(\d{2})/.exec(selectedDay || "");
+      const seed = JOURNALS[0]?.date || "";
+      const match = /^(\d{4})-(\d{2})/.exec(seed);
       if (match) return { y: Number(match[1]), m: Number(match[2]) };
       const now = new Date();
       return { y: now.getFullYear(), m: now.getMonth() + 1 };
     })();
+
+    function dayFromLocation() {
+      const hash = String(location.hash || "").replace(/^#/, "");
+      if (parseDay(hash)) return hash;
+      const queryDay = new URLSearchParams(location.search).get("day");
+      if (parseDay(queryDay)) return queryDay;
+      return null;
+    }
+
+    function showToast(message, kind = "ok") {
+      const el = document.getElementById("toast");
+      if (!el) return;
+      if (toastTimer) clearTimeout(toastTimer);
+      el.textContent = message;
+      el.className = `toast show ${kind}`;
+      toastTimer = setTimeout(() => {
+        el.className = "toast hidden";
+        toastTimer = null;
+      }, 2200);
+    }
 
     function escapeHtml(value) {
       return String(value)
@@ -47,6 +89,113 @@
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
+    }
+
+    function parseDay(day) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || ""));
+      if (!match) return null;
+      return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) };
+    }
+
+    function monthKey(y, m) {
+      return `${y}-${String(m).padStart(2, "0")}`;
+    }
+
+    function weekdayLabel(y, m, d) {
+      return ["일", "월", "화", "수", "목", "금", "토"][new Date(y, m - 1, d).getDay()];
+    }
+
+    function weekIndexInMonth(y, m, d) {
+      const firstWeekday = new Date(y, m - 1, 1).getDay();
+      return Math.floor((d + firstWeekday - 1) / 7) + 1;
+    }
+
+    function weekRangeInMonth(y, m, weekIndex) {
+      const firstWeekday = new Date(y, m - 1, 1).getDay();
+      const daysInMonth = new Date(y, m, 0).getDate();
+      const start = Math.max(1, (weekIndex - 1) * 7 - firstWeekday + 1);
+      const end = Math.min(daysInMonth, start + 6);
+      return { start, end };
+    }
+
+    function explorerKey(...parts) {
+      return parts.join(":");
+    }
+
+    function isExplorerOpen(key, fallback = false) {
+      if (Object.prototype.hasOwnProperty.call(explorerOpen, key)) return Boolean(explorerOpen[key]);
+      return fallback;
+    }
+
+    function setExplorerOpen(key, open) {
+      explorerOpen[key] = Boolean(open);
+    }
+
+    function ensurePathForDay(day) {
+      const parsed = parseDay(day);
+      if (!parsed) return;
+      setExplorerOpen(explorerKey("y", parsed.y), true);
+      setExplorerOpen(explorerKey("ym", parsed.y, parsed.m), true);
+      setExplorerOpen(explorerKey("yw", parsed.y, parsed.m, weekIndexInMonth(parsed.y, parsed.m, parsed.d)), true);
+    }
+
+    function sortJournalsDescending(items) {
+      return [...(items || [])].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    }
+
+    function buildTree(items) {
+      const years = new Map();
+      for (const item of sortJournalsDescending(items)) {
+        const parsed = parseDay(item.date);
+        if (!parsed) continue;
+        if (!years.has(parsed.y)) years.set(parsed.y, new Map());
+        const months = years.get(parsed.y);
+        if (!months.has(parsed.m)) months.set(parsed.m, new Map());
+        const weeks = months.get(parsed.m);
+        const week = weekIndexInMonth(parsed.y, parsed.m, parsed.d);
+        if (!weeks.has(week)) weeks.set(week, []);
+        weeks.get(week).push(item);
+      }
+      return [...years.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([year, months]) => ({
+          year,
+          months: [...months.entries()]
+            .sort((a, b) => b[0] - a[0])
+            .map(([month, weeks]) => ({
+              month,
+              weeks: [...weeks.entries()]
+                .sort((a, b) => b[0] - a[0])
+                .map(([week, days]) => ({ week, days: sortJournalsDescending(days) })),
+            })),
+        }));
+    }
+
+    function countTreeDays(node) {
+      if (node.days) return node.days.length;
+      if (node.weeks) return node.weeks.reduce((sum, week) => sum + week.days.length, 0);
+      if (node.months) {
+        return node.months.reduce(
+          (sum, month) => sum + month.weeks.reduce((inner, week) => inner + week.days.length, 0),
+          0
+        );
+      }
+      return 0;
+    }
+
+    function renderFolder({ key, depth, label, count, open, childrenHtml }) {
+      const icon = open ? "folder_open" : "folder";
+      const chevron = open ? "expand_more" : "chevron_right";
+      return `
+        <li class="explorer-item explorer-folder" style="--depth:${depth}">
+          <button type="button" class="explorer-row" data-explorer-toggle="${escapeHtml(key)}" aria-expanded="${open ? "true" : "false"}">
+            <span class="material-symbols-outlined explorer-chevron" aria-hidden="true">${chevron}</span>
+            <span class="material-symbols-outlined explorer-icon" aria-hidden="true">${icon}</span>
+            <span class="explorer-label">${escapeHtml(label)}</span>
+            <span class="meta">${count}</span>
+          </button>
+          ${open ? `<ul class="explorer-children">${childrenHtml}</ul>` : ""}
+        </li>`;
     }
 
     function formatDayTitle(day) {
@@ -57,8 +206,113 @@
       return `${match[1]}년 ${Number(match[2])}월 ${Number(match[3])}일 ${weekdays[date.getDay()]}요일`;
     }
 
-    function monthKey(y, m) {
-      return `${y}-${String(m).padStart(2, "0")}`;
+    function stripLeadHeading(markdown) {
+      return String(markdown || "").replace(/^#\s*업무\s*일지\s*\([^)]+\)\s*\n+/m, "");
+    }
+
+    function updateScrollFade(scroll, wrap) {
+      if (!scroll || !wrap) return;
+      const more = scroll.scrollTop + scroll.clientHeight < scroll.scrollHeight - 2;
+      wrap.classList.toggle("has-more", more);
+    }
+
+    function updateShareFades() {
+      updateScrollFade(document.getElementById("share-list-scroll"), document.getElementById("share-list-wrap"));
+      updateScrollFade(document.getElementById("share-detail-scroll"), document.getElementById("share-detail-wrap"));
+    }
+
+    function scheduleShareFades() {
+      requestAnimationFrame(() => {
+        updateShareFades();
+        requestAnimationFrame(updateShareFades);
+      });
+    }
+
+    function bindDetailScroll() {
+      document.getElementById("share-detail-scroll")?.addEventListener("scroll", updateShareFades, { passive: true });
+    }
+
+    function renderPlaceholder() {
+      const detail = document.getElementById("share-detail");
+      if (!detail) return;
+      currentMarkdown = "";
+      detail.innerHTML = `
+        <div class="journal-placeholder">
+          <img class="journal-placeholder-art" src="/static/worklog-place.png" alt="" width="280" height="280">
+          <h3 class="journal-placeholder-title">선택된 일지 없음</h3>
+          <p class="journal-placeholder-hint">달력이나 목록에서 날짜를 선택하세요.</p>
+        </div>
+      `;
+      scheduleShareFades();
+    }
+
+    async function copyText(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    }
+
+    async function shareSelectedDay() {
+      if (!selectedDay) return;
+      const url = `${location.origin}${location.pathname}#${selectedDay}`;
+      try {
+        await copyText(url);
+        if (location.hash.replace(/^#/, "") !== selectedDay) {
+          history.replaceState(null, "", `#${selectedDay}`);
+        }
+        showToast("공유 링크를 복사했습니다.", "ok");
+      } catch (err) {
+        showToast(err.message || "공유 링크 복사에 실패했습니다.", "error");
+      }
+    }
+
+    async function copySelectedDay() {
+      if (!selectedDay) return;
+      const title = formatDayTitle(selectedDay);
+      const body = stripLeadHeading(currentMarkdown).trim();
+      const text = body ? `${title}\n\n${body}` : title;
+      try {
+        await copyText(text);
+        showToast("일지를 복사했습니다.", "ok");
+      } catch (err) {
+        showToast(err.message || "복사에 실패했습니다.", "error");
+      }
+    }
+
+    function printSelectedDay() {
+      document.body.classList.add("printing-journal");
+      const cleanup = () => {
+        document.body.classList.remove("printing-journal");
+        window.removeEventListener("afterprint", cleanup);
+      };
+      window.addEventListener("afterprint", cleanup);
+      window.print();
+      setTimeout(cleanup, 1000);
+    }
+
+    function bindDetailActions(hasJournal) {
+      document.getElementById("share-day-link")?.addEventListener("click", () => {
+        if (!hasJournal) return;
+        shareSelectedDay();
+      });
+      document.getElementById("share-day-print")?.addEventListener("click", () => {
+        if (!hasJournal) return;
+        printSelectedDay();
+      });
+      document.getElementById("share-day-copy")?.addEventListener("click", () => {
+        if (!hasJournal) return;
+        copySelectedDay();
+      });
     }
 
     function renderList() {
@@ -66,20 +320,75 @@
       if (!list) return;
       if (!JOURNALS.length) {
         list.innerHTML = `<li class="empty">공유된 일지가 없습니다.</li>`;
+        scheduleShareFades();
         return;
       }
-      list.innerHTML = JOURNALS.map((item) => {
-        const meta = [];
-        if (item.has_journal) meta.push("일지");
-        if (item.attachments) meta.push(`첨부 ${item.attachments}`);
-        const selected = item.date === selectedDay ? " is-selected" : "";
-        return `<li>
-          <button type="button" class="share-journal-item${selected}" data-day="${escapeHtml(item.date)}">
-            <strong>${escapeHtml(item.date)}</strong>
-            <span>${escapeHtml(meta.join(" · ") || "기록")}</span>
-          </button>
-        </li>`;
-      }).join("");
+      if (selectedDay) ensurePathForDay(selectedDay);
+      const tree = buildTree(JOURNALS);
+      list.innerHTML = tree
+        .map((yearNode) => {
+          const yearKey = explorerKey("y", yearNode.year);
+          const yearOpen = isExplorerOpen(yearKey, false);
+          const monthsHtml = yearNode.months
+            .map((monthNode) => {
+              const monthKeyId = explorerKey("ym", yearNode.year, monthNode.month);
+              const monthOpen = isExplorerOpen(monthKeyId, false);
+              const weeksHtml = monthNode.weeks
+                .map((weekNode) => {
+                  const weekKey = explorerKey("yw", yearNode.year, monthNode.month, weekNode.week);
+                  const weekOpen = isExplorerOpen(weekKey, false);
+                  const range = weekRangeInMonth(yearNode.year, monthNode.month, weekNode.week);
+                  const daysHtml = weekNode.days
+                    .map((item) => {
+                      const parsed = parseDay(item.date);
+                      const dayLabel = parsed
+                        ? `${parsed.d}일 (${weekdayLabel(parsed.y, parsed.m, parsed.d)})`
+                        : item.date;
+                      const selected = item.date === selectedDay ? " selected" : "";
+                      return `
+                        <li class="explorer-item explorer-file" style="--depth:3">
+                          <button type="button" class="explorer-row link${selected}" data-date="${escapeHtml(item.date)}">
+                            <span class="explorer-chevron-spacer" aria-hidden="true"></span>
+                            <span class="material-symbols-outlined explorer-icon" aria-hidden="true">description</span>
+                            <span class="explorer-label">
+                              <strong>${escapeHtml(dayLabel)}</strong>
+                              <span class="meta">첨부 ${item.attachments || 0}</span>
+                            </span>
+                          </button>
+                        </li>`;
+                    })
+                    .join("");
+                  return renderFolder({
+                    key: weekKey,
+                    depth: 2,
+                    label: `${weekNode.week}주 (${monthNode.month}/${range.start}–${monthNode.month}/${range.end})`,
+                    count: weekNode.days.length,
+                    open: weekOpen,
+                    childrenHtml: daysHtml,
+                  });
+                })
+                .join("");
+              return renderFolder({
+                key: monthKeyId,
+                depth: 1,
+                label: `${monthNode.month}월`,
+                count: countTreeDays(monthNode),
+                open: monthOpen,
+                childrenHtml: weeksHtml,
+              });
+            })
+            .join("");
+          return renderFolder({
+            key: yearKey,
+            depth: 0,
+            label: `${yearNode.year}년`,
+            count: countTreeDays(yearNode),
+            open: yearOpen,
+            childrenHtml: monthsHtml,
+          });
+        })
+        .join("");
+      scheduleShareFades();
     }
 
     function renderCalendar() {
@@ -149,14 +458,38 @@
     async function openDay(day) {
       selectedDay = day;
       const match = /^(\d{4})-(\d{2})/.exec(day || "");
-      if (match) {
-        calendarMonth = { y: Number(match[1]), m: Number(match[2]) };
+      if (match) calendarMonth = { y: Number(match[1]), m: Number(match[2]) };
+      ensurePathForDay(day);
+      if (location.hash.replace(/^#/, "") !== day) {
+        history.replaceState(null, "", `#${day}`);
       }
       renderList();
       renderCalendar();
       const detail = document.getElementById("share-detail");
       if (!detail) return;
-      detail.innerHTML = `<p class="empty">불러오는 중…</p>`;
+      detail.innerHTML = `
+        <div class="row-head">
+          <h3>${escapeHtml(formatDayTitle(day))}</h3>
+          <div class="journal-actions">
+            <button type="button" id="share-day-link" class="icon-btn" title="공유 링크" aria-label="공유 링크" disabled>
+              <span class="material-symbols-outlined" aria-hidden="true">link</span>
+            </button>
+            <button type="button" id="share-day-print" class="icon-btn" title="인쇄" aria-label="인쇄" disabled>
+              <span class="material-symbols-outlined" aria-hidden="true">print</span>
+            </button>
+            <button type="button" id="share-day-copy" class="icon-btn" title="복사" aria-label="복사" disabled>
+              <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
+            </button>
+          </div>
+        </div>
+        <div class="list-scroll-wrap" id="share-detail-wrap">
+          <div class="list-scroll" id="share-detail-scroll">
+            <p class="empty">불러오는 중…</p>
+          </div>
+        </div>
+      `;
+      bindDetailScroll();
+      scheduleShareFades();
       try {
         const response = await fetch(`/api/share/${encodeURIComponent(TOKEN)}?day=${encodeURIComponent(day)}`);
         const data = await response.json().catch(() => ({}));
@@ -164,12 +497,15 @@
           throw new Error(typeof data.detail === "string" ? data.detail : "일지를 불러오지 못했습니다.");
         }
         const markdown = data.markdown || "";
+        currentMarkdown = markdown;
+        const hasJournal = Boolean(data.has_journal || markdown);
         let bodyHtml = `<p class="empty">이 날짜의 일지가 없습니다.</p>`;
         if (markdown) {
+          const cleaned = stripLeadHeading(markdown);
           if (window.marked && typeof window.marked.parse === "function") {
-            bodyHtml = `<div class="journal-body markdown-body">${window.marked.parse(markdown)}</div>`;
+            bodyHtml = `<div class="journal-body markdown-body">${window.marked.parse(cleaned)}</div>`;
           } else {
-            bodyHtml = `<pre class="journal-body">${escapeHtml(markdown)}</pre>`;
+            bodyHtml = `<pre class="journal-body">${escapeHtml(cleaned)}</pre>`;
           }
         }
         const attachments = Array.isArray(data.attachments) ? data.attachments : [];
@@ -183,28 +519,57 @@
               )
               .join("")
           : `<li class="empty">첨부 없음</li>`;
-        detail.innerHTML = `
-          <div class="row-head"><h3>${escapeHtml(formatDayTitle(day))}</h3></div>
-          ${bodyHtml}
-          <div class="journal-attach">
-            <h3>첨부</h3>
-            <ul class="attach-list">${attachHtml}</ul>
-          </div>
-        `;
+        const scroll = document.getElementById("share-detail-scroll");
+        if (scroll) {
+          scroll.innerHTML = `
+            ${bodyHtml}
+            <div class="journal-attach">
+              <h3>첨부</h3>
+              <ul class="attach-list">${attachHtml}</ul>
+            </div>
+          `;
+        }
+        ["share-day-link", "share-day-print", "share-day-copy"].forEach((id) => {
+          const btn = document.getElementById(id);
+          if (btn) btn.disabled = !hasJournal;
+        });
+        bindDetailActions(hasJournal);
       } catch (err) {
-        detail.innerHTML = `<p class="empty">${escapeHtml(err.message || "오류")}</p>`;
+        currentMarkdown = "";
+        const scroll = document.getElementById("share-detail-scroll");
+        if (scroll) scroll.innerHTML = `<p class="empty">${escapeHtml(err.message || "오류")}</p>`;
+        bindDetailActions(false);
       }
+      scheduleShareFades();
     }
 
     document.getElementById("share-journal-list")?.addEventListener("click", (event) => {
-      const btn = event.target.closest?.(".share-journal-item");
-      if (!btn?.dataset.day) return;
-      openDay(btn.dataset.day);
+      const toggle = event.target.closest?.("[data-explorer-toggle]");
+      if (toggle) {
+        const key = toggle.dataset.explorerToggle;
+        setExplorerOpen(key, !isExplorerOpen(key, false));
+        renderList();
+        return;
+      }
+      const dayBtn = event.target.closest?.("[data-date]");
+      if (!dayBtn?.dataset.date) return;
+      openDay(dayBtn.dataset.date);
+    });
+    document.getElementById("share-list-scroll")?.addEventListener("scroll", updateShareFades, { passive: true });
+    window.addEventListener("resize", scheduleShareFades);
+    window.addEventListener("hashchange", () => {
+      const day = dayFromLocation();
+      if (day && day !== selectedDay && byDate.has(day)) openDay(day);
     });
 
-    renderList();
-    renderCalendar();
-    if (selectedDay) openDay(selectedDay);
+    const initialDay = dayFromLocation();
+    if (initialDay && byDate.has(initialDay)) {
+      openDay(initialDay);
+    } else {
+      renderList();
+      renderCalendar();
+      renderPlaceholder();
+    }
   </script>
 </body>
 </html>

@@ -205,7 +205,12 @@ def test_share_link_is_public(tmp_path: Path) -> None:
     guest = TestClient(create_app(state.config_path))
     page = guest.get(f"/s/{token}")
     assert page.status_code == 200
-    assert "공유본" in guest.get(f"/api/share/{token}").json()["markdown"]
+    assert "alice의 공유 일지" in page.text
+    assert " 공유" in page.text
+    shared_payload = guest.get(f"/api/share/{token}").json()
+    assert "공유본" in shared_payload["markdown"]
+    assert shared_payload["shared_by"] == "alice"
+    assert shared_payload["shared_at"]
     assert guest.get("/api/journals/2026-08-01").status_code == 401
     assert (user_root(state.config.data_root, user_id) / "journals" / "2026-08-01.md").is_file()
 

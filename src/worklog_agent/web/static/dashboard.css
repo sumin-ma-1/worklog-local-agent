@@ -917,35 +917,36 @@ main {
 .journal-chat-form {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 8px 10px 10px;
   border-top: 1px solid var(--line);
 }
 
-.journal-chat-form input {
+.journal-chat-form #journal-chat-input {
   flex: 1;
   min-width: 0;
+  width: auto;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 9px 12px;
+  padding: 9px 14px;
   font: inherit;
   font-size: 13px;
   background: #f8fafc;
 }
 
-.journal-chat-form input:focus {
+.journal-chat-form #journal-chat-input:focus {
   outline: 2px solid #93c5fd;
   border-color: #60a5fa;
   background: #fff;
 }
 
-.journal-chat-send {
-  width: 34px;
-  height: 34px;
+.journal-chat-form .journal-chat-send {
+  width: 36px;
+  height: 36px;
   border: 0;
-  border-radius: 999px;
-  background: rgba(61, 122, 90, 0.12);
-  color: #1f6b45;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -954,11 +955,11 @@ main {
   padding: 0;
 }
 
-.journal-chat-send:hover {
-  background: rgba(61, 122, 90, 0.2);
+.journal-chat-form .journal-chat-send:hover {
+  background: var(--accent-hover);
 }
 
-.journal-chat-send .material-symbols-outlined {
+.journal-chat-form .journal-chat-send .material-symbols-outlined {
   font-size: 18px;
   font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 20;
   line-height: 1;
@@ -3574,37 +3575,130 @@ button[type="submit"]:disabled,
 }
 
 /* ---- public share page ---- */
+html.share-page,
+html:has(body.share-mode) {
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper) !important;
+}
+
 body.share-mode {
-  min-height: 100vh;
-  overflow: auto;
-  background:
-    radial-gradient(1000px 420px at 50% -10%, #dbe7ff 0%, transparent 55%),
-    var(--paper);
+  height: 100% !important;
+  min-height: 100%;
+  overflow: hidden !important;
+  background: var(--paper) !important;
+  margin: 0;
+  padding: 0;
+}
+
+/* Single-day share: exactly one scrollbar on body; card grows with content */
+html.share-page:has(body.share-day),
+html:has(body.share-day) {
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+body.share-mode.share-day {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
 }
 
 .share-shell {
-  width: min(760px, calc(100% - 32px));
-  margin: 36px auto 64px;
+  width: min(960px, calc(100% - 40px));
+  margin: 16px auto 40px;
+}
+
+.share-day .share-shell,
+.share-day .share-head,
+.share-day .share-panel,
+.share-day #share-detail,
+.share-day #share-body,
+.share-day .journal-body,
+.share-day .markdown-body,
+.share-day .journal-attach {
+  overflow: visible !important;
+  max-height: none !important;
+  height: auto !important;
 }
 
 .share-library-shell {
-  width: min(1100px, calc(100% - 32px));
-  margin: 24px auto 40px;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  margin: 0;
+  padding: 16px 24px 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.share-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 4px 2px 2px;
+  position: relative;
+}
+
+.share-shell:not(.share-library-shell) > .share-head {
+  margin-bottom: 16px;
+}
+
+.share-head-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.share-brand {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.share-at {
+  margin: 0;
+  margin-left: auto;
+  align-self: flex-start;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
+.share-head h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.15;
+  color: var(--accent);
 }
 
 .share-library-layout {
   display: grid;
-  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   gap: 16px;
   align-items: stretch;
-  min-height: calc(100vh - 48px);
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .share-library-browse {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .share-calendar-panel {
@@ -3614,12 +3708,27 @@ body.share-mode {
 }
 
 .share-library-list-panel {
-  flex: 1 1 auto;
-  min-height: 160px;
+  flex: 1 1 0%;
+  min-height: 0;
   padding: 14px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.share-library-list-panel > .list-scroll-wrap {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.share-library-list-panel > .list-scroll-wrap > .list-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  max-height: 100%;
 }
 
 .share-library-list-title {
@@ -3631,19 +3740,9 @@ body.share-mode {
 .share-journal-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 24px;
   display: grid;
   gap: 6px;
-  flex: 1;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-
-.share-journal-list::-webkit-scrollbar {
-  width: 0;
-  display: none;
 }
 
 .share-journal-item {
@@ -3678,16 +3777,42 @@ body.share-mode {
   border-color: rgba(30, 58, 138, 0.18);
 }
 
-.share-library-detail {
-  min-height: 320px;
-  max-height: calc(100vh - 48px);
-  overflow: auto;
-  scrollbar-width: none;
+.share-library-detail,
+.share-panel.share-library-detail {
+  width: 100%;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
 }
 
-.share-library-detail::-webkit-scrollbar {
-  width: 0;
-  display: none;
+.share-library-detail > .row-head {
+  flex: 0 0 auto;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.share-library-detail > .list-scroll-wrap {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.share-library-detail > .list-scroll-wrap > .list-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  max-height: 100%;
+}
+
+.share-library-detail > .journal-placeholder {
+  flex: 1;
+  min-height: 0;
 }
 
 .share-calendar-panel .cal-day:disabled {
@@ -3696,34 +3821,60 @@ body.share-mode {
 }
 
 @media (max-width: 800px) {
+  html.share-page,
+  html:has(body.share-mode),
+  body.share-mode {
+    height: auto !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  html.share-page:has(body.share-day),
+  html:has(body.share-day) {
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  body.share-mode.share-day {
+    height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  .share-library-shell {
+    height: auto;
+    overflow: visible;
+    padding: 14px 14px 28px;
+  }
+
   .share-library-layout {
     grid-template-columns: 1fr;
+    overflow: visible;
     min-height: 0;
   }
+
+  .share-library-browse,
+  .share-library-list-panel,
   .share-library-detail {
+    overflow: visible;
     max-height: none;
   }
-  .share-journal-list {
-    max-height: 240px;
+
+  .share-library-list-panel {
+    max-height: 280px;
+    overflow: hidden;
   }
-}
 
-.share-head {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 18px;
-}
+  .share-library-detail {
+    min-height: 360px;
+    max-height: 70vh;
+    overflow: hidden;
+  }
 
-.share-brand {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.share-head h1 {
-  margin: 2px 0 0;
-  font-size: 22px;
-  color: var(--accent);
+  .share-shell {
+    width: calc(100% - 24px);
+    margin: 12px auto 32px;
+  }
 }
 
 .share-panel {
@@ -3784,13 +3935,17 @@ body.share-mode {
   }
 
   #journal-detail,
-  #journal-detail * {
+  #journal-detail *,
+  #share-detail,
+  #share-detail * {
     visibility: visible;
   }
 
   #toast,
   #app-sidebar,
   .journal-browse,
+  .share-library-browse,
+  .share-head,
   .journal-actions,
   .list-scroll-wrap::after {
     display: none !important;
@@ -3801,7 +3956,11 @@ body.share-mode {
   main,
   #view-journals,
   .split,
-  #journal-detail {
+  #journal-detail,
+  #share-detail,
+  .share-shell,
+  .share-library-shell,
+  .share-library-layout {
     display: block !important;
     position: static !important;
     width: auto !important;
@@ -3815,35 +3974,42 @@ body.share-mode {
     border: 0 !important;
   }
 
-  #journal-detail {
+  #journal-detail,
+  #share-detail {
     position: absolute !important;
     left: 0;
     top: 0;
     width: 100% !important;
   }
 
-  #journal-detail .row-head {
+  #journal-detail .row-head,
+  #share-detail .row-head {
     margin-bottom: 16px !important;
   }
 
-  #journal-detail .row-head h3 {
+  #journal-detail .row-head h3,
+  #share-detail .row-head h3 {
     color: #111 !important;
     font-size: 20px !important;
   }
 
   #journal-detail .list-scroll-wrap,
-  #journal-detail .list-scroll {
+  #journal-detail .list-scroll,
+  #share-detail .list-scroll-wrap,
+  #share-detail .list-scroll {
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
   }
 
-  #journal-detail .journal-attach {
+  #journal-detail .journal-attach,
+  #share-detail .journal-attach {
     margin-top: 20px;
     page-break-inside: avoid;
   }
 
-  #journal-detail .markdown-body a {
+  #journal-detail .markdown-body a,
+  #share-detail .markdown-body a {
     color: #111 !important;
     text-decoration: none !important;
   }

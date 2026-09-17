@@ -1,55 +1,196 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" class="share-page">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Worklog · {{ day }}</title>
+  <title>Worklog · {% if shared_by %}{{ shared_by }}의 공유 일지{% else %}{{ day }}{% endif %}</title>
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
-  <link rel="stylesheet" href="/static/dashboard.css?v=file-icons-1">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
+  <link rel="stylesheet" href="/static/dashboard.css?v=share-scroll-3">
 </head>
-<body class="share-mode">
+<body class="share-mode share-day">
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   <main class="share-shell">
     <header class="share-head">
       <img class="brand-logo" src="/static/worklog.jpg" alt="Worklog" width="36" height="36">
-      <div>
+      <div class="share-head-text">
         <div class="share-brand">Worklog</div>
-        <h1>{{ day }}</h1>
+        <h1>{% if shared_by %}{{ shared_by }}의 공유 일지{% else %}공유된 일지{% endif %}</h1>
       </div>
-    </header>
-    <article class="panel share-panel">
-      {% if has_journal and markdown %}
-      <div id="share-body" class="journal-body markdown-body"></div>
-      {% else %}
-      <p class="empty">이 날짜의 일지가 없습니다.</p>
+      {% if shared_at %}
+      <p class="share-at">{{ shared_at }} 공유</p>
       {% endif %}
+    </header>
+    <article class="panel share-panel" id="share-detail">
+      <div class="row-head">
+        <h3 id="share-day-title">{{ day }}</h3>
+        <div class="journal-actions">
+          <button type="button" id="share-day-link" class="icon-btn" title="공유 링크" aria-label="공유 링크" disabled>
+            <span class="material-symbols-outlined" aria-hidden="true">link</span>
+          </button>
+          <button type="button" id="share-day-print" class="icon-btn" title="인쇄" aria-label="인쇄" disabled>
+            <span class="material-symbols-outlined" aria-hidden="true">print</span>
+          </button>
+          <button type="button" id="share-day-copy" class="icon-btn" title="복사" aria-label="복사" disabled>
+            <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
+          </button>
+        </div>
+      </div>
+      <div id="share-body"><p class="empty">불러오는 중…</p></div>
       <div class="journal-attach">
         <h3>첨부</h3>
-        <ul class="attach-list">
-          {% if attachments %}
-            {% for file in attachments %}
-            <li>
-              <img class="attach-icon" src="{{ file.icon }}" alt="" width="20" height="20">
-              <a href="{{ file.href }}" target="_blank" rel="noreferrer">{{ file.name }}</a>
-            </li>
-            {% endfor %}
-          {% else %}
-            <li class="empty">첨부 없음</li>
-          {% endif %}
-        </ul>
+        <ul class="attach-list" id="share-attach-list"><li class="empty">불러오는 중…</li></ul>
       </div>
     </article>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
   <script>
-    const source = {{ markdown_json }};
-    const el = document.getElementById("share-body");
-    if (el && source) {
+    const TOKEN = {{ token_json|safe }};
+    const DAY = "{{ day }}";
+    let currentMarkdown = "";
+    let toastTimer = null;
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function formatDayTitle(day) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || ""));
+      if (!match) return day;
+      const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+      return `${match[1]}년 ${Number(match[2])}월 ${Number(match[3])}일 ${weekdays[date.getDay()]}요일`;
+    }
+
+    function stripLeadHeading(markdown) {
+      return String(markdown || "").replace(/^#\s*업무\s*일지\s*\([^)]+\)\s*\n+/m, "");
+    }
+
+    function showToast(message, kind = "ok") {
+      const el = document.getElementById("toast");
+      if (!el) return;
+      if (toastTimer) clearTimeout(toastTimer);
+      el.textContent = message;
+      el.className = `toast show ${kind}`;
+      toastTimer = setTimeout(() => {
+        el.className = "toast hidden";
+        toastTimer = null;
+      }, 2200);
+    }
+
+    async function copyText(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    }
+
+    function setActionsEnabled(enabled) {
+      ["share-day-link", "share-day-print", "share-day-copy"].forEach((id) => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = !enabled;
+      });
+    }
+
+    function renderBody(markdown) {
+      const el = document.getElementById("share-body");
+      if (!el) return;
+      currentMarkdown = markdown || "";
+      const cleaned = stripLeadHeading(currentMarkdown).trim();
+      if (!cleaned) {
+        el.innerHTML = `<p class="empty">이 날짜의 일지가 없습니다.</p>`;
+        return;
+      }
       if (window.marked && typeof window.marked.parse === "function") {
-        el.innerHTML = window.marked.parse(source);
+        el.innerHTML = `<div class="journal-body markdown-body">${window.marked.parse(cleaned)}</div>`;
       } else {
-        el.textContent = source;
+        el.innerHTML = `<pre class="journal-body">${escapeHtml(cleaned)}</pre>`;
       }
     }
+
+    function renderAttachments(attachments) {
+      const list = document.getElementById("share-attach-list");
+      if (!list) return;
+      const files = Array.isArray(attachments) ? attachments : [];
+      if (!files.length) {
+        list.innerHTML = `<li class="empty">첨부 없음</li>`;
+        return;
+      }
+      list.innerHTML = files
+        .map(
+          (file) => `<li>
+            <img class="attach-icon" src="${escapeHtml(file.icon || "")}" alt="" width="20" height="20">
+            <a href="${escapeHtml(file.href || "#")}" target="_blank" rel="noreferrer">${escapeHtml(file.name || "")}</a>
+          </li>`
+        )
+        .join("");
+    }
+
+    const titleEl = document.getElementById("share-day-title");
+    if (titleEl) titleEl.textContent = formatDayTitle(DAY);
+
+    (async () => {
+      try {
+        const response = await fetch(`/api/share/${encodeURIComponent(TOKEN)}`);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof data.detail === "string" ? data.detail : "일지를 불러오지 못했습니다.");
+        }
+        const markdown = data.markdown || "";
+        const hasJournal = Boolean(data.has_journal || markdown);
+        renderBody(markdown);
+        renderAttachments(data.attachments);
+        setActionsEnabled(hasJournal);
+      } catch (err) {
+        const el = document.getElementById("share-body");
+        if (el) el.innerHTML = `<p class="empty">${escapeHtml(err.message || "오류")}</p>`;
+        renderAttachments([]);
+        setActionsEnabled(false);
+      }
+    })();
+
+    document.getElementById("share-day-link")?.addEventListener("click", async () => {
+      try {
+        await copyText(location.href);
+        showToast("공유 링크를 복사했습니다.", "ok");
+      } catch (err) {
+        showToast(err.message || "공유 링크 복사에 실패했습니다.", "error");
+      }
+    });
+    document.getElementById("share-day-print")?.addEventListener("click", () => {
+      document.body.classList.add("printing-journal");
+      const cleanup = () => {
+        document.body.classList.remove("printing-journal");
+        window.removeEventListener("afterprint", cleanup);
+      };
+      window.addEventListener("afterprint", cleanup);
+      window.print();
+      setTimeout(cleanup, 1000);
+    });
+    document.getElementById("share-day-copy")?.addEventListener("click", async () => {
+      const title = formatDayTitle(DAY);
+      const body = stripLeadHeading(currentMarkdown).trim();
+      const text = body ? `${title}\n\n${body}` : title;
+      try {
+        await copyText(text);
+        showToast("일지를 복사했습니다.", "ok");
+      } catch (err) {
+        showToast(err.message || "복사에 실패했습니다.", "error");
+      }
+    });
   </script>
 </body>
 </html>

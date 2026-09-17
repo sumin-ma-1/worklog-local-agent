@@ -1400,7 +1400,6 @@ function initJournalDock() {
       state.journalLayout.editing = !state.journalLayout.editing;
       if (state.journalLayout.editing) {
         state.journalLayout.chatOpen = false;
-        showBanner("레이아웃 수정: 패널 X로 숨기기, 달력/리스트를 드래그해 순서 변경", "info");
       }
       applyJournalLayout();
       return;
