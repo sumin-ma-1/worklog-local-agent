@@ -1,0 +1,15 @@
+[Unit]
+Description=Cloudflare Tunnel for Worklog dashboard
+After=network-online.target worklog-dashboard.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel --config %h/.cloudflared/config.yml run
+Restart=always
+RestartSec=5
+StandardOutput=append:%h/.cloudflared/worklog-tunnel.log
+StandardError=append:%h/.cloudflared/worklog-tunnel.log
+
+[Install]
+WantedBy=default.target

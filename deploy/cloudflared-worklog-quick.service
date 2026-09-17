@@ -1,0 +1,15 @@
+[Unit]
+Description=Cloudflare quick tunnel (dev) for Worklog
+After=network-online.target worklog-dashboard.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8787
+Restart=always
+RestartSec=5
+StandardOutput=append:%h/.cloudflared/worklog-quick-tunnel.log
+StandardError=append:%h/.cloudflared/worklog-quick-tunnel.log
+
+[Install]
+WantedBy=default.target

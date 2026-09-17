@@ -1,0 +1,17 @@
+[Unit]
+Description=Worklog Local Agent dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/data/sumin/worklog-local-agent
+EnvironmentFile=-/mnt/data/sumin/worklog-local-agent/.env
+ExecStart=/mnt/data/sumin/worklog-local-agent/.venv/bin/worklog-agent dashboard --host 127.0.0.1 --port 8787
+Restart=always
+RestartSec=3
+StandardOutput=append:/mnt/data/sumin/worklog-local-agent/data/dashboard.log
+StandardError=append:/mnt/data/sumin/worklog-local-agent/data/dashboard.log
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,10 @@
+# ~/.cloudflared/config.yml 로 복사하거나 include 하세요.
+# TUNNEL_ID / credentials 파일 경로는 `cloudflared tunnel create` 결과에 맞게 바꿉니다.
+
+tunnel: <TUNNEL_ID>
+credentials-file: /home/sumin/.cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  - hostname: worklog.YOUR_DOMAIN
+    service: http://127.0.0.1:8787
+  - service: http_status:404

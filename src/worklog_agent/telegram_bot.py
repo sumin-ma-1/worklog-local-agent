@@ -115,7 +115,7 @@ def _generate_keyboard(
 def _dashboard_menu_button(url: str) -> dict:
     return {
         "type": "web_app",
-        "text": "🏠",
+        "text": DASHBOARD_KEYBOARD_LABEL,
         "web_app": {"url": url},
     }
 
