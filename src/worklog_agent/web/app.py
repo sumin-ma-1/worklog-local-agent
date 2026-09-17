@@ -1208,13 +1208,26 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                 "days": [],
             }
         corpus = "\n\n".join(snippets)
+        question = body.question.strip()
+        if re.fullmatch(
+            r"(?i)(안녕(하세요|하십니까)?|하이+|헤이+|헬로+|hello|hi|hey|yo|"
+            r"반가워(요)?|반갑습니다|좋은\s*(아침|점심|저녁)(입니다|이에요|예요)?)"
+            r"[\s!?.~ㅋㅎ]*",
+            question,
+        ):
+            return {
+                "answer": "안녕하세요! 일지에서 찾아드릴 내용이 있으면 말씀해 주세요.",
+                "days": [],
+            }
         system = (
             "당신은 사용자의 업무 일지 검색 비서입니다. "
-            "아래 일지 내용만 근거로 한국어로 짧고 정확하게 답하세요. "
-            "관련 날짜가 있으면 답변 끝에 한 줄로 DAY:YYYY-MM-DD 형식으로 적어 주세요. "
+            "일지 내용만 근거로 한국어로 짧고 정확하게 답하세요. "
+            "간단한 인사나 짧은 일상 대화에도 자연스럽고 친절하게 짧게 응답하세요. "
+            "인사·잡담에는 DAY 줄을 붙이지 마세요. "
+            "일지 관련 답변에서 관련 날짜가 있으면 답변 끝에 한 줄로 DAY:YYYY-MM-DD 형식으로 적어 주세요. "
             "여러 날이면 가장 관련 있는 하루만 적으세요. 근거가 없으면 모른다고 말하세요."
         )
-        user_prompt = f"질문: {body.question.strip()}\n\n일지:\n{corpus}"
+        user_prompt = f"질문: {question}\n\n일지:\n{corpus}"
         try:
             from worklog_agent.ollama import OllamaError, chat as ollama_chat
 

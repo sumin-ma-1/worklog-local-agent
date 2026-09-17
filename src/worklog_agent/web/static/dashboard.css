@@ -1106,8 +1106,8 @@ main {
   bottom: auto;
   transform: translateX(-50%);
   z-index: 36;
-  width: min(420px, calc(100% - 24px));
-  max-height: min(420px, 52vh);
+  width: min(460px, calc(100% - 24px));
+  max-height: min(320px, 48vh);
   display: flex;
   flex-direction: column;
   background: #fff;
@@ -1115,6 +1115,7 @@ main {
   border-radius: 16px;
   box-shadow: 0 16px 40px rgba(15, 27, 45, 0.16);
   overflow: hidden;
+  transition: max-height 0.22s ease;
 }
 
 .journal-chat-panel.hidden {
@@ -1128,23 +1129,88 @@ main {
   gap: 8px;
   padding: 10px 12px 8px;
   border-bottom: 0;
+  flex: 0 0 auto;
 }
 
 .journal-chat-head strong {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--ink);
+}
+
+.journal-chat-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.journal-chat-body::before,
+.journal-chat-body::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 28px;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.journal-chat-body::before {
+  top: 0;
+  background: linear-gradient(to bottom, #fff, rgba(255, 255, 255, 0));
+}
+
+.journal-chat-body::after {
+  bottom: 0;
+  background: linear-gradient(to top, #fff, rgba(255, 255, 255, 0));
+}
+
+.journal-chat-body.has-more-top::before,
+.journal-chat-body.has-more::after {
+  opacity: 1;
+}
+
+.journal-chat-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 28px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.journal-chat-empty.hidden {
+  display: none !important;
+}
+
+.journal-chat-empty p {
+  margin: 0;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: rgba(15, 27, 45, 0.28);
+  line-height: 1.5;
 }
 
 .journal-chat-log {
   flex: 1;
-  min-height: 140px;
-  max-height: 260px;
+  min-height: 160px;
+  max-height: 180px;
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
   display: grid;
   gap: 8px;
+  align-content: start;
   scrollbar-width: none;
+  transition: max-height 0.22s ease;
 }
 
 .journal-chat-log::-webkit-scrollbar {
@@ -1154,12 +1220,17 @@ main {
 
 .journal-chat-msg {
   max-width: 92%;
-  padding: 8px 11px;
-  border-radius: 12px;
-  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 14px;
   line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.journal-chat-msg.is-short {
+  border-radius: 999px;
+  padding: 7px 14px;
 }
 
 .journal-chat-msg.is-user {
@@ -1172,6 +1243,46 @@ main {
   justify-self: start;
   background: #f3f5f8;
   color: var(--ink);
+}
+
+.journal-chat-msg.is-thinking {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 10px 14px;
+  border-radius: 999px;
+}
+
+.chat-thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.chat-thinking-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #c5ccd6;
+  animation: chat-dot-color 1.2s ease-in-out infinite;
+}
+
+.chat-thinking-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.chat-thinking-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes chat-dot-color {
+  0%,
+  100% {
+    background: #c5ccd6;
+  }
+  50% {
+    background: #5b6b7c;
+  }
 }
 
 .journal-chat-msg .chat-day-link {
@@ -1191,7 +1302,8 @@ main {
   align-items: center;
   gap: 8px;
   padding: 8px 10px 10px;
-  border-top: 1px solid var(--line);
+  border-top: 0;
+  flex: 0 0 auto;
 }
 
 .journal-chat-form #journal-chat-input {
@@ -1202,7 +1314,7 @@ main {
   border-radius: 999px;
   padding: 9px 14px;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   background: #f8fafc;
 }
 

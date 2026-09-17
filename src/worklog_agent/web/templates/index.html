@@ -7,7 +7,7 @@
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" sizes="180x180">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=attach-arrow-1">
+  <link rel="stylesheet" href="/static/dashboard.css?v=chat-size-1">
 </head>
 <body class="login-mode">
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
@@ -204,7 +204,12 @@
               <span class="material-symbols-outlined" aria-hidden="true">close</span>
             </button>
           </div>
-          <div id="journal-chat-log" class="journal-chat-log" aria-live="polite"></div>
+          <div id="journal-chat-body" class="journal-chat-body">
+            <div id="journal-chat-empty" class="journal-chat-empty" aria-hidden="false">
+              <p>무엇을 도와드릴까요?</p>
+            </div>
+            <div id="journal-chat-log" class="journal-chat-log" aria-live="polite"></div>
+          </div>
           <form id="journal-chat-form" class="journal-chat-form">
             <input id="journal-chat-input" type="text" placeholder="(예) 금형 과제 하던 날이 언제였지?" autocomplete="off">
             <button type="submit" class="journal-chat-send" title="보내기" aria-label="보내기">
@@ -648,6 +653,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-  <script src="/static/dashboard.js?v=attach-arrow-1"></script>
+  <script src="/static/dashboard.js?v=chat-size-1"></script>
 </body>
 </html>

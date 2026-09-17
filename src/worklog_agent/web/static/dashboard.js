@@ -531,6 +531,7 @@ async function loadOverview() {
       ? "미연동"
       : "미로그인";
   renderSidebarAccount();
+  syncJournalChatEmpty();
   syncRunPreferenceSummaries();
   applyRunTodayDefaults(state.today);
   if (data.job) renderJob(data.job);
@@ -1321,7 +1322,9 @@ async function loadJournals(selectDay) {
 
 function updateScrollFade(scroll, wrap) {
   if (!scroll || !wrap) return;
+  const top = scroll.scrollTop > 2;
   const more = scroll.scrollTop + scroll.clientHeight < scroll.scrollHeight - 2;
+  wrap.classList.toggle("has-more-top", top);
   wrap.classList.toggle("has-more", more);
 }
 
@@ -1329,6 +1332,7 @@ function updateJournalScrollFade() {
   updateScrollFade($("#journal-list-scroll"), $("#journal-list-wrap"));
   updateScrollFade($("#journal-detail-scroll"), $("#journal-detail-wrap"));
   updateScrollFade($("#journal-editor"), $("#journal-editor-wrap"));
+  updateScrollFade($("#journal-chat-log"), $("#journal-chat-body"));
 }
 
 function scheduleJournalScrollFade() {
@@ -1672,30 +1676,92 @@ function applyJournalLayout() {
   scheduleJournalScrollFade();
 }
 
+function journalChatDisplayName() {
+  const tg = String(state.telegramLabel || "").trim();
+  if (tg && tg !== "미연동" && tg !== "미로그인" && tg !== "—") {
+    const bare = tg.replace(/\s*\([^)]*\)\s*$/, "").trim();
+    if (bare) return bare;
+  }
+  return String(state.username || "").trim();
+}
+
+function syncJournalChatEmpty() {
+  const empty = $("#journal-chat-empty");
+  const log = $("#journal-chat-log");
+  const label = empty?.querySelector("p");
+  const name = journalChatDisplayName();
+  if (label) {
+    label.textContent = name
+      ? `무엇을 도와드릴까요, ${name}?`
+      : "무엇을 도와드릴까요?";
+  }
+  const hasMessages = Boolean(log?.querySelector(".journal-chat-msg"));
+  empty?.classList.toggle("hidden", hasMessages);
+  empty?.setAttribute("aria-hidden", hasMessages ? "true" : "false");
+}
+
+function syncJournalChatSize() {
+  const panel = $("#journal-chat-panel");
+  const log = $("#journal-chat-log");
+  if (!panel || !log) return;
+  const count = log.querySelectorAll(".journal-chat-msg").length;
+  const logMax = Math.min(560, Math.max(160, 160 + count * 42));
+  const panelMax = Math.min(Math.round(window.innerHeight * 0.78), logMax + 118);
+  log.style.maxHeight = `${logMax}px`;
+  panel.style.maxHeight = `${panelMax}px`;
+}
+
+function isShortChatText(text) {
+  const value = String(text || "").trim();
+  if (!value) return true;
+  if (value.includes("\n")) return false;
+  return value.length <= 18;
+}
+
+function isSimpleChatGreeting(question) {
+  const q = String(question || "").trim();
+  return /^(안녕(하세요|하십니까)?|하이+|헤이+|헬로+|hello|hi|hey|yo|반가워(요)?|반갑습니다|좋은\s*(아침|점심|저녁)(입니다|이에요|예요)?)[\s!?.~ㅋㅎㅎㅏ]*$/i.test(
+    q
+  );
+}
+
+function simpleGreetingReply() {
+  const name = journalChatDisplayName();
+  const options = name
+    ? [
+        `안녕하세요, ${name}! 무엇을 도와드릴까요?`,
+        `안녕하세요! 일지에서 찾아드릴 내용이 있으면 말씀해 주세요.`,
+        `반갑습니다, ${name}. 궁금한 날이 있으면 물어보세요.`,
+      ]
+    : [
+        "안녕하세요! 무엇을 도와드릴까요?",
+        "안녕하세요! 일지에서 찾아드릴 내용이 있으면 말씀해 주세요.",
+        "반갑습니다. 궁금한 날이 있으면 물어보세요.",
+      ];
+  return options[Math.floor(Math.random() * options.length)];
+}
+
 function setJournalChatOpen(open) {
   state.journalLayout.chatOpen = Boolean(open);
   if (open) state.journalLayout.editing = false;
   applyJournalLayout();
   if (open) {
-    const log = $("#journal-chat-log");
-    if (log && !log.dataset.ready) {
-      log.dataset.ready = "1";
-      appendJournalChatMessage(
-        "bot",
-        "일지 내용을 바탕으로 질문해 주세요. 관련 날짜를 찾으면 바로 열 수 있습니다."
-      );
-    }
+    syncJournalChatEmpty();
+    syncJournalChatSize();
+    scheduleJournalScrollFade();
     $("#journal-chat-input")?.focus();
   }
 }
 
 function appendJournalChatMessage(role, text, day = null) {
   const log = $("#journal-chat-log");
-  if (!log) return;
+  if (!log) return null;
   const el = document.createElement("div");
-  el.className = `journal-chat-msg is-${role === "user" ? "user" : "bot"}`;
+  const short = isShortChatText(text);
+  el.className = `journal-chat-msg is-${role === "user" ? "user" : "bot"}${short ? " is-short" : ""}`;
   el.textContent = text;
   if (day) {
+    el.classList.remove("is-short");
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "chat-day-link";
@@ -1705,16 +1771,38 @@ function appendJournalChatMessage(role, text, day = null) {
     el.appendChild(btn);
   }
   log.appendChild(el);
+  syncJournalChatEmpty();
+  syncJournalChatSize();
   log.scrollTop = log.scrollHeight;
+  scheduleJournalScrollFade();
+  return el;
+}
+
+function appendJournalChatThinking() {
+  const log = $("#journal-chat-log");
+  if (!log) return null;
+  const el = document.createElement("div");
+  el.className = "journal-chat-msg is-bot is-thinking";
+  el.setAttribute("aria-label", "생각 중");
+  el.innerHTML =
+    '<span class="chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></span>';
+  log.appendChild(el);
+  syncJournalChatEmpty();
+  syncJournalChatSize();
+  log.scrollTop = log.scrollHeight;
+  scheduleJournalScrollFade();
+  return el;
 }
 
 async function submitJournalChat(question) {
   const q = String(question || "").trim();
   if (!q) return;
   appendJournalChatMessage("user", q);
-  appendJournalChatMessage("bot", "찾는 중…");
-  const log = $("#journal-chat-log");
-  const pending = log?.lastElementChild;
+  if (isSimpleChatGreeting(q)) {
+    appendJournalChatMessage("bot", simpleGreetingReply());
+    return;
+  }
+  const pending = appendJournalChatThinking();
   try {
     const data = await api("/api/journals/ask", {
       method: "POST",
@@ -1726,12 +1814,16 @@ async function submitJournalChat(question) {
   } catch (err) {
     if (pending) pending.remove();
     appendJournalChatMessage("bot", err.message || "질의에 실패했습니다.");
+  } finally {
+    syncJournalChatSize();
   }
 }
 
 function initJournalDock() {
   readJournalLayout();
   applyJournalLayout();
+  syncJournalChatEmpty();
+  syncJournalChatSize();
 
   const detail = $("#journal-detail");
   if (detail && typeof ResizeObserver !== "undefined") {
@@ -1831,10 +1923,17 @@ function initJournalDock() {
     if (input) input.value = "";
     submitJournalChat(value).catch((err) => showBanner(err.message, "error"));
   });
+  $("#journal-chat-log")?.addEventListener("scroll", updateJournalScrollFade, { passive: true });
   $("#journal-chat-log")?.addEventListener("click", (event) => {
     const link = event.target.closest?.(".chat-day-link");
     if (!link?.dataset.day) return;
     loadJournal(link.dataset.day).catch((err) => showBanner(err.message, "error"));
+  });
+  window.addEventListener("resize", () => {
+    if (state.journalLayout.chatOpen) {
+      syncJournalChatSize();
+      scheduleJournalScrollFade();
+    }
   });
 }
 
