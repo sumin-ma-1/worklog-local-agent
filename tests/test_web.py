@@ -211,6 +211,7 @@ def test_share_link_is_public(tmp_path: Path) -> None:
     assert "공유본" in shared_payload["markdown"]
     assert shared_payload["shared_by"] == "alice"
     assert shared_payload["shared_at"]
+    assert shared_payload["updated_at"]
     assert guest.get("/api/journals/2026-08-01").status_code == 401
     assert (user_root(state.config.data_root, user_id) / "journals" / "2026-08-01.md").is_file()
 

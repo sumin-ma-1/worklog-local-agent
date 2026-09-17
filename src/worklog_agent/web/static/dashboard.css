@@ -3714,11 +3714,20 @@ body.share-mode.share-day {
   margin: 0;
   margin-left: auto;
   align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.2;
   white-space: nowrap;
   padding-top: 2px;
+}
+
+.share-at-updated {
+  font-size: 11px;
+  opacity: 0.92;
 }
 
 .share-head h1 {

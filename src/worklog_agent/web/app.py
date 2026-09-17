@@ -58,11 +58,15 @@ from worklog_agent.users import (
     load_user_preferences,
     load_user_telegram,
     migrate_legacy_to_user,
+    normalize_share_mode,
     remove_user_chat,
     revoke_share_for_day,
     save_user_preferences,
     save_user_telegram,
     share_for_day,
+    snapshot_attachment_file,
+    snapshot_day_payload,
+    snapshot_library_index,
     telegram_linked,
     user_config,
     user_root,
@@ -173,6 +177,10 @@ class JournalAskBody(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
+class ShareModeBody(BaseModel):
+    mode: str = "live"
+
+
 class PreferencesBody(BaseModel):
     timezone: str | None = Field(default=None, min_length=1, max_length=64)
     model: str | None = Field(default=None, min_length=1, max_length=128)
@@ -225,6 +233,59 @@ def _format_shared_at(value: str | None, tz_name: str) -> str | None:
     except Exception:
         local = when.astimezone(timezone.utc)
     return local.strftime("%Y-%m-%d %H:%M")
+
+
+def _path_mtime(path: Path) -> datetime | None:
+    try:
+        if path.is_file():
+            return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        if path.is_dir():
+            latest: datetime | None = None
+            for child in path.rglob("*"):
+                if not child.is_file():
+                    continue
+                when = datetime.fromtimestamp(child.stat().st_mtime, tz=timezone.utc)
+                if latest is None or when > latest:
+                    latest = when
+            return latest
+    except OSError:
+        return None
+    return None
+
+
+def _day_updated_at_iso(storage: Storage, day: str) -> str | None:
+    candidates: list[datetime] = []
+    for path in (storage.journal_path(day), storage.daily_path(day), storage.attachments / day):
+        when = _path_mtime(path)
+        if when is not None:
+            candidates.append(when)
+    if not candidates:
+        return None
+    return max(candidates).isoformat()
+
+
+def _library_updated_at_iso(storage: Storage) -> str | None:
+    dates = set(storage.list_journal_dates()) | set(storage.list_daily_dates())
+    try:
+        if storage.attachments.exists():
+            dates.update(path.name for path in storage.attachments.iterdir() if path.is_dir())
+    except OSError:
+        pass
+    candidates: list[datetime] = []
+    for day in dates:
+        raw = _day_updated_at_iso(storage, day)
+        if not raw:
+            continue
+        try:
+            when = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        candidates.append(when)
+    if not candidates:
+        return None
+    return max(candidates).isoformat()
 
 
 def _cookie_kwargs() -> dict:
@@ -289,6 +350,7 @@ def _journal_payload(storage: Storage, day: str) -> dict:
         "has_journal": has_journal,
         "daily": daily,
         "attachments": storage.list_attachments(day),
+        "updated_at": _day_updated_at_iso(storage, day),
     }
 
 
@@ -413,19 +475,25 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         user_dir, meta = found
         shared_by = shared_by_username(user_dir)
         shared_at = _format_shared_at(str(meta.get("created_at") or ""), state.config.timezone)
+        share_mode = normalize_share_mode(meta.get("mode"))
+        updated_at = None
         if meta.get("scope") == "library":
-            storage = Storage(user_dir)
-            dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
-            items = []
-            for day in dates:
-                payload = _journal_payload(storage, day)
-                items.append(
-                    {
-                        "date": day,
-                        "has_journal": payload["has_journal"],
-                        "attachments": len(payload["attachments"]),
-                    }
-                )
+            if share_mode == "snapshot":
+                items = snapshot_library_index(meta)
+            else:
+                storage = Storage(user_dir)
+                dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
+                items = []
+                for day in dates:
+                    payload = _journal_payload(storage, day)
+                    items.append(
+                        {
+                            "date": day,
+                            "has_journal": payload["has_journal"],
+                            "attachments": len(payload["attachments"]),
+                        }
+                    )
+                updated_at = _format_shared_at(_library_updated_at_iso(storage), state.config.timezone)
             return templates.TemplateResponse(
                 request,
                 "share_library.html",
@@ -436,11 +504,18 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                     "journals_json": json.dumps(items, ensure_ascii=False),
                     "shared_by": shared_by,
                     "shared_at": shared_at,
+                    "share_mode": share_mode,
+                    "updated_at": updated_at,
                 },
             )
         day = str(meta.get("day") or "")
         if not _DAY_RE.fullmatch(day):
             raise HTTPException(status_code=404, detail="공유 링크가 올바르지 않습니다.")
+        if share_mode == "live":
+            updated_at = _format_shared_at(
+                _day_updated_at_iso(Storage(user_dir), day),
+                state.config.timezone,
+            )
         return templates.TemplateResponse(
             request,
             "share.html",
@@ -450,6 +525,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                 "token_json": json.dumps(token),
                 "shared_by": shared_by,
                 "shared_at": shared_at,
+                "share_mode": share_mode,
+                "updated_at": updated_at,
             },
         )
 
@@ -463,51 +540,73 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         storage = Storage(user_dir)
         shared_by = shared_by_username(user_dir)
         shared_at = _format_shared_at(str(meta.get("created_at") or ""), state.config.timezone)
+        share_mode = normalize_share_mode(meta.get("mode"))
+
+        def with_attach_links(payload: dict) -> dict:
+            payload = dict(payload)
+            payload["attachments"] = [
+                {
+                    **file,
+                    "href": f"/api/share/{token}/file?path={quote(str(file.get('relative') or ''), safe='')}",
+                    "icon": file_icon_src(str(file.get("name") or "")),
+                }
+                for file in (payload.get("attachments") or [])
+            ]
+            payload["shared_by"] = shared_by
+            payload["shared_at"] = shared_at
+            payload["share_mode"] = share_mode
+            raw_updated = payload.get("updated_at")
+            if share_mode == "live" and raw_updated:
+                payload["updated_at"] = _format_shared_at(str(raw_updated), state.config.timezone)
+            else:
+                payload["updated_at"] = None
+            return payload
+
         if meta.get("scope") == "library":
             if day:
                 day = _require_day(day)
+                if share_mode == "snapshot":
+                    payload = snapshot_day_payload(meta, day)
+                    if not payload:
+                        raise HTTPException(status_code=404, detail="공유된 일지가 없습니다.")
+                    return with_attach_links(payload)
                 payload = _journal_payload(storage, day)
-                payload["attachments"] = [
-                    {
-                        **file,
-                        "href": f"/api/share/{token}/file?path={quote(str(file.get('relative') or ''), safe='')}",
-                        "icon": file_icon_src(str(file.get("name") or "")),
-                    }
-                    for file in payload["attachments"]
-                ]
-                payload["shared_by"] = shared_by
-                payload["shared_at"] = shared_at
-                return payload
-            dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
-            journals = []
-            for item_day in dates:
-                payload = _journal_payload(storage, item_day)
-                journals.append(
-                    {
-                        "date": item_day,
-                        "has_journal": payload["has_journal"],
-                        "attachments": len(payload["attachments"]),
-                    }
+                return with_attach_links(payload)
+            if share_mode == "snapshot":
+                journals = snapshot_library_index(meta)
+                library_updated = None
+            else:
+                dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
+                journals = []
+                for item_day in dates:
+                    payload = _journal_payload(storage, item_day)
+                    journals.append(
+                        {
+                            "date": item_day,
+                            "has_journal": payload["has_journal"],
+                            "attachments": len(payload["attachments"]),
+                        }
+                    )
+                library_updated = _format_shared_at(
+                    _library_updated_at_iso(storage),
+                    state.config.timezone,
                 )
             return {
                 "scope": "library",
                 "journals": journals,
                 "shared_by": shared_by,
                 "shared_at": shared_at,
+                "share_mode": share_mode,
+                "updated_at": library_updated,
             }
         day = _require_day(str(meta.get("day") or ""))
+        if share_mode == "snapshot":
+            payload = snapshot_day_payload(meta, day)
+            if not payload:
+                raise HTTPException(status_code=404, detail="공유된 일지가 없습니다.")
+            return with_attach_links(payload)
         payload = _journal_payload(storage, day)
-        payload["attachments"] = [
-            {
-                **file,
-                "href": f"/api/share/{token}/file?path={quote(str(file.get('relative') or ''), safe='')}",
-                "icon": file_icon_src(str(file.get("name") or "")),
-            }
-            for file in payload["attachments"]
-        ]
-        payload["shared_by"] = shared_by
-        payload["shared_at"] = shared_at
-        return payload
+        return with_attach_links(payload)
 
     @app.get("/api/share/{token}/file")
     async def share_file(token: str, path: str = Query(..., min_length=1)) -> FileResponse:
@@ -522,7 +621,10 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             if not rel.startswith(f"{day}/"):
                 raise HTTPException(status_code=400, detail="이 공유 링크에서 열 수 없는 파일입니다.")
         try:
-            file_path = Storage(user_dir).attachment_file(rel)
+            if normalize_share_mode(meta.get("mode")) == "snapshot":
+                file_path = snapshot_attachment_file(user_dir, token, rel)
+            else:
+                file_path = Storage(user_dir).attachment_file(rel)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except FileNotFoundError as exc:
@@ -966,24 +1068,37 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         return {"date": day, "deleted": True}
 
     @app.post("/api/journals/{day}/share")
-    async def share_journal(request: Request, day: str) -> dict:
+    async def share_journal(request: Request, day: str, body: ShareModeBody | None = None) -> dict:
         _, cfg = require_telegram(request)
         day = _require_day(day)
+        mode = normalize_share_mode((body.mode if body else None))
         storage = Storage(cfg.data_root)
         if not storage.journal_path(day).exists() and not storage.daily_path(day).exists():
             raise HTTPException(status_code=404, detail="공유할 일지가 없습니다.")
-        meta = create_share_token(cfg.data_root, day)
-        return {"date": day, "token": meta["token"], "url": f"/s/{meta['token']}"}
+        meta = create_share_token(cfg.data_root, day, mode=mode)
+        return {
+            "date": day,
+            "token": meta["token"],
+            "url": f"/s/{meta['token']}",
+            "mode": normalize_share_mode(meta.get("mode")),
+        }
 
     @app.post("/api/journals/share-library")
-    async def share_journal_library(request: Request) -> dict:
+    async def share_journal_library(request: Request, body: ShareModeBody | None = None) -> dict:
         _, cfg = require_telegram(request)
+        mode = normalize_share_mode((body.mode if body else None))
         storage = Storage(cfg.data_root)
         dates = set(storage.list_journal_dates()) | set(storage.list_daily_dates())
         if not dates:
             raise HTTPException(status_code=404, detail="공유할 일지가 없습니다.")
-        meta = create_library_share_token(cfg.data_root)
-        return {"scope": "library", "token": meta["token"], "url": f"/s/{meta['token']}", "count": len(dates)}
+        meta = create_library_share_token(cfg.data_root, mode=mode)
+        return {
+            "scope": "library",
+            "token": meta["token"],
+            "url": f"/s/{meta['token']}",
+            "count": len(dates),
+            "mode": normalize_share_mode(meta.get("mode")),
+        }
 
     @app.delete("/api/journals/{day}/share")
     async def unshare_journal(request: Request, day: str) -> dict:

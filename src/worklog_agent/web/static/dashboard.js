@@ -1183,16 +1183,31 @@ function printJournal() {
   setTimeout(cleanup, 1000);
 }
 
+async function pickShareMode() {
+  const live = await showConfirmToast("공유 방식을 선택하세요.", {
+    confirmLabel: "최신 반영",
+    cancelLabel: "현재 고정",
+    confirmIcon: "sync",
+    cancelIcon: "lock",
+  });
+  return live ? "live" : "snapshot";
+}
+
 async function shareJournal(day) {
   try {
-    const data = await api(`/api/journals/${day}/share`, { method: "POST", body: "{}" });
+    const mode = await pickShareMode();
+    const data = await api(`/api/journals/${day}/share`, {
+      method: "POST",
+      body: JSON.stringify({ mode }),
+    });
     const url = `${window.location.origin}${data.url}`;
+    const label = data.mode === "snapshot" ? "현재 버전 고정" : "최신 반영";
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(url);
-      showBanner("공유 링크를 복사했습니다.", "ok");
+      showBanner(`${label} 공유 링크를 복사했습니다.`, "ok");
     } else {
       window.prompt("공유 링크", url);
-      showBanner("공유 링크를 만들었습니다.", "ok");
+      showBanner(`${label} 공유 링크를 만들었습니다.`, "ok");
     }
   } catch (err) {
     showBanner(err.message, "error");
@@ -1201,14 +1216,19 @@ async function shareJournal(day) {
 
 async function shareJournalLibrary() {
   try {
-    const data = await api("/api/journals/share-library", { method: "POST", body: "{}" });
+    const mode = await pickShareMode();
+    const data = await api("/api/journals/share-library", {
+      method: "POST",
+      body: JSON.stringify({ mode }),
+    });
     const url = `${window.location.origin}${data.url}`;
+    const label = data.mode === "snapshot" ? "현재 버전 고정" : "최신 반영";
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(url);
-      showBanner(`전체 일지 공유 링크를 복사했습니다. (${data.count || 0}일)`, "ok");
+      showBanner(`${label} 전체 일지 공유 링크를 복사했습니다. (${data.count || 0}일)`, "ok");
     } else {
       window.prompt("전체 일지 공유 링크", url);
-      showBanner("전체 일지 공유 링크를 만들었습니다.", "ok");
+      showBanner(`${label} 전체 일지 공유 링크를 만들었습니다.`, "ok");
     }
   } catch (err) {
     showBanner(err.message, "error");

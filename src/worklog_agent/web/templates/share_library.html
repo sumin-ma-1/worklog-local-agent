@@ -6,7 +6,7 @@
   <title>Worklog · {% if shared_by %}{{ shared_by }}의 공유 일지{% else %}공유 일지{% endif %}</title>
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=share-scroll-3">
+  <link rel="stylesheet" href="/static/dashboard.css?v=share-updated-1">
 </head>
 <body class="share-mode">
   <script>document.documentElement.classList.add("share-page");</script>
@@ -18,8 +18,19 @@
         <div class="share-brand">Worklog</div>
         <h1>{% if shared_by %}{{ shared_by }}의 공유 일지{% else %}공유된 일지{% endif %}</h1>
       </div>
-      {% if shared_at %}
-      <p class="share-at">{{ shared_at }} 공유</p>
+      {% if shared_at or updated_at or share_mode %}
+      <p class="share-at" id="share-at">
+        {% if shared_at %}
+        <span class="share-at-shared">{% if share_mode == "snapshot" %}고정 · {% else %}최신 · {% endif %}{{ shared_at }} 공유</span>
+        {% elif share_mode == "snapshot" %}
+        <span class="share-at-shared">고정 공유</span>
+        {% elif share_mode == "live" %}
+        <span class="share-at-shared">최신 반영</span>
+        {% endif %}
+        {% if share_mode == "live" and updated_at %}
+        <span class="share-at-updated">업데이트 {{ updated_at }}</span>
+        {% endif %}
+      </p>
       {% endif %}
     </header>
 
@@ -89,6 +100,23 @@
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
+    }
+
+    function setUpdatedAt(value) {
+      const root = document.getElementById("share-at");
+      if (!root) return;
+      let el = root.querySelector(".share-at-updated");
+      const text = String(value || "").trim();
+      if (!text) {
+        if (el) el.remove();
+        return;
+      }
+      if (!el) {
+        el = document.createElement("span");
+        el.className = "share-at-updated";
+        root.appendChild(el);
+      }
+      el.textContent = `업데이트 ${text}`;
     }
 
     function parseDay(day) {
@@ -499,6 +527,7 @@
         const markdown = data.markdown || "";
         currentMarkdown = markdown;
         const hasJournal = Boolean(data.has_journal || markdown);
+        if (data.share_mode === "live") setUpdatedAt(data.updated_at);
         let bodyHtml = `<p class="empty">이 날짜의 일지가 없습니다.</p>`;
         if (markdown) {
           const cleaned = stripLeadHeading(markdown);

@@ -69,6 +69,15 @@ def shares_path(root: Path) -> Path:
     return Path(root) / "shares.json"
 
 
+def share_snapshot_dir(root: Path, token: str) -> Path:
+    return Path(root) / "share_snapshots" / token
+
+
+def normalize_share_mode(mode: str | None) -> str:
+    value = str(mode or "live").strip().lower()
+    return "snapshot" if value == "snapshot" else "live"
+
+
 def load_user_chats(root: Path) -> list[str | int]:
     raw = _read_json(chats_path(root), {"chats": []})
     items = raw.get("chats", []) if isinstance(raw, dict) else []
@@ -207,48 +216,140 @@ def save_shares(root: Path, shares: dict[str, dict[str, Any]]) -> None:
     _write_json(shares_path(root), shares)
 
 
-def create_share_token(root: Path, day: str) -> dict[str, Any]:
+def _remove_share_token(root: Path, shares: dict[str, dict[str, Any]], token: str) -> None:
+    shares.pop(token, None)
+    snap = share_snapshot_dir(root, token)
+    if snap.exists():
+        shutil.rmtree(snap, ignore_errors=True)
+
+
+def _copy_day_attachments(storage: Any, day: str, files_root: Path) -> list[dict[str, str]]:
+    copied: list[dict[str, str]] = []
+    for file in storage.list_attachments(day):
+        rel = str(file.get("relative") or "").replace("\\", "/").lstrip("/")
+        if not rel:
+            continue
+        try:
+            src = storage.attachment_file(rel)
+        except (ValueError, FileNotFoundError):
+            continue
+        dest = files_root / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        copied.append(
+            {
+                "name": str(file.get("name") or dest.name),
+                "relative": rel,
+                "day": str(file.get("day") or day),
+                "chat": str(file.get("chat") or ""),
+            }
+        )
+    return copied
+
+
+def build_day_share_snapshot(storage: Any, day: str, token: str) -> dict[str, Any]:
+    snap_root = share_snapshot_dir(storage.root, token)
+    if snap_root.exists():
+        shutil.rmtree(snap_root, ignore_errors=True)
+    files_root = snap_root / "files"
+    files_root.mkdir(parents=True, exist_ok=True)
+    has_journal = storage.journal_path(day).exists()
+    markdown = storage.read_journal(day) if has_journal else ""
+    attachments = _copy_day_attachments(storage, day, files_root)
+    return {
+        "date": day,
+        "markdown": markdown,
+        "has_journal": has_journal,
+        "attachments": attachments,
+    }
+
+
+def create_share_token(root: Path, day: str, *, mode: str = "live") -> dict[str, Any]:
+    from worklog_agent.storage import Storage
+
+    mode = normalize_share_mode(mode)
     shares = load_shares(root)
-    # One active token per day: drop previous tokens for same day.
-    shares = {token: meta for token, meta in shares.items() if meta.get("day") != day}
+    for token, meta in list(shares.items()):
+        if meta.get("day") == day and normalize_share_mode(meta.get("mode")) == mode:
+            _remove_share_token(root, shares, token)
     token = secrets.token_urlsafe(24)
-    meta = {
+    meta: dict[str, Any] = {
         "day": day,
         "scope": "day",
+        "mode": mode,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    if mode == "snapshot":
+        meta["snapshot"] = build_day_share_snapshot(Storage(root), day, token)
     shares[token] = meta
     save_shares(root, shares)
     return {"token": token, **meta}
 
 
-def create_library_share_token(root: Path) -> dict[str, Any]:
+def create_library_share_token(root: Path, *, mode: str = "live") -> dict[str, Any]:
+    from worklog_agent.storage import Storage
+
+    mode = normalize_share_mode(mode)
     shares = load_shares(root)
-    # One active library token: drop previous library tokens.
-    shares = {token: meta for token, meta in shares.items() if meta.get("scope") != "library"}
+    for token, meta in list(shares.items()):
+        if meta.get("scope") == "library" and normalize_share_mode(meta.get("mode")) == mode:
+            _remove_share_token(root, shares, token)
     token = secrets.token_urlsafe(24)
-    meta = {
+    meta: dict[str, Any] = {
         "scope": "library",
+        "mode": mode,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    if mode == "snapshot":
+        storage = Storage(root)
+        dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
+        snap_root = share_snapshot_dir(root, token)
+        if snap_root.exists():
+            shutil.rmtree(snap_root, ignore_errors=True)
+        files_root = snap_root / "files"
+        files_root.mkdir(parents=True, exist_ok=True)
+        packed = []
+        for day in dates:
+            has_journal = storage.journal_path(day).exists()
+            markdown = storage.read_journal(day) if has_journal else ""
+            attachments = _copy_day_attachments(storage, day, files_root)
+            packed.append(
+                {
+                    "date": day,
+                    "markdown": markdown,
+                    "has_journal": has_journal,
+                    "attachments": attachments,
+                }
+            )
+        meta["snapshot"] = {"journals": packed}
     shares[token] = meta
     save_shares(root, shares)
     return {"token": token, **meta}
 
 
-def library_share_for(root: Path) -> dict[str, Any] | None:
+def library_share_for(root: Path, *, mode: str | None = None) -> dict[str, Any] | None:
+    want = normalize_share_mode(mode) if mode else None
     for token, meta in load_shares(root).items():
-        if meta.get("scope") == "library":
-            return {"token": token, **meta}
+        if meta.get("scope") != "library":
+            continue
+        if want and normalize_share_mode(meta.get("mode")) != want:
+            continue
+        return {"token": token, **meta}
     return None
 
 
-def revoke_share_for_day(root: Path, day: str) -> int:
+def revoke_share_for_day(root: Path, day: str, *, live_only: bool = True) -> int:
     shares = load_shares(root)
-    keep = {token: meta for token, meta in shares.items() if meta.get("day") != day}
-    removed = len(shares) - len(keep)
+    removed = 0
+    for token, meta in list(shares.items()):
+        if meta.get("day") != day:
+            continue
+        if live_only and normalize_share_mode(meta.get("mode")) == "snapshot":
+            continue
+        _remove_share_token(root, shares, token)
+        removed += 1
     if removed:
-        save_shares(root, keep)
+        save_shares(root, shares)
     return removed
 
 
@@ -266,11 +367,82 @@ def find_share(data_root: Path, token: str) -> tuple[Path, dict[str, Any]] | Non
     return None
 
 
-def share_for_day(root: Path, day: str) -> dict[str, Any] | None:
+def share_for_day(root: Path, day: str, *, mode: str | None = None) -> dict[str, Any] | None:
+    want = normalize_share_mode(mode) if mode else None
     for token, meta in load_shares(root).items():
-        if meta.get("day") == day:
-            return {"token": token, **meta}
+        if meta.get("day") != day:
+            continue
+        if want and normalize_share_mode(meta.get("mode")) != want:
+            continue
+        return {"token": token, **meta}
     return None
+
+
+def snapshot_day_payload(meta: dict[str, Any], day: str | None = None) -> dict[str, Any] | None:
+    snap = meta.get("snapshot")
+    if not isinstance(snap, dict):
+        return None
+    if meta.get("scope") == "library":
+        target = str(day or "")
+        journals = snap.get("journals")
+        if not isinstance(journals, list):
+            return None
+        for item in journals:
+            if isinstance(item, dict) and str(item.get("date") or "") == target:
+                return {
+                    "date": target,
+                    "markdown": str(item.get("markdown") or ""),
+                    "has_journal": bool(item.get("has_journal") or item.get("markdown")),
+                    "attachments": list(item.get("attachments") or []),
+                    "daily": None,
+                }
+        return None
+    return {
+        "date": str(meta.get("day") or ""),
+        "markdown": str(snap.get("markdown") or ""),
+        "has_journal": bool(snap.get("has_journal") or snap.get("markdown")),
+        "attachments": list(snap.get("attachments") or []),
+        "daily": None,
+    }
+
+
+def snapshot_library_index(meta: dict[str, Any]) -> list[dict[str, Any]]:
+    snap = meta.get("snapshot")
+    if not isinstance(snap, dict):
+        return []
+    journals = snap.get("journals")
+    if not isinstance(journals, list):
+        return []
+    items = []
+    for item in journals:
+        if not isinstance(item, dict):
+            continue
+        day = str(item.get("date") or "")
+        if not day:
+            continue
+        attachments = item.get("attachments") if isinstance(item.get("attachments"), list) else []
+        items.append(
+            {
+                "date": day,
+                "has_journal": bool(item.get("has_journal") or item.get("markdown")),
+                "attachments": len(attachments),
+            }
+        )
+    items.sort(key=lambda row: str(row.get("date") or ""), reverse=True)
+    return items
+
+
+def snapshot_attachment_file(root: Path, token: str, relative: str) -> Path:
+    rel = relative.replace("\\", "/").lstrip("/")
+    if not rel or ".." in rel.split("/"):
+        raise ValueError("첨부파일 경로가 올바르지 않습니다.")
+    base = (share_snapshot_dir(root, token) / "files").resolve()
+    path = (base / rel).resolve()
+    if path != base and base not in path.parents:
+        raise ValueError("첨부파일 경로가 저장소 밖입니다.")
+    if not path.is_file():
+        raise FileNotFoundError(f"첨부파일이 없습니다: {relative}")
+    return path
 
 
 def has_legacy_layout(data_root: Path) -> bool:
