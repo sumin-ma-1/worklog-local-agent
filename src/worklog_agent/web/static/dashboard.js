@@ -1797,6 +1797,9 @@ function renderJournalPrompt(focusIndex = null) {
           .map((name, index) => {
             if (editing) {
               return `<li class="prompt-section-chip is-editing" data-index="${index}">
+              <span class="prompt-section-drag" draggable="true" title="드래그하여 순서 변경" aria-label="순서 변경">
+                <span class="material-symbols-outlined" aria-hidden="true">drag_indicator</span>
+              </span>
               <span class="prompt-section-label is-editable" contenteditable="true" role="textbox" data-index="${index}" data-placeholder="이름" aria-label="섹션 이름">${escapeHtml(name)}</span>
               <button type="button" class="prompt-section-remove" data-index="${index}" title="삭제" aria-label="삭제">
                 <span class="material-symbols-outlined" aria-hidden="true">close</span>
@@ -1832,6 +1835,18 @@ function renderJournalPrompt(focusIndex = null) {
       sel?.addRange(range);
     }
   }
+}
+
+function reorderPromptSection(fromIndex, toIndex) {
+  if (!state.journalPromptEditing) return;
+  if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return;
+  if (fromIndex === toIndex) return;
+  const draft = state.journalSectionsDraft;
+  if (fromIndex < 0 || fromIndex >= draft.length || toIndex < 0 || toIndex >= draft.length) return;
+  syncPromptDraftFromInputs();
+  const [item] = state.journalSectionsDraft.splice(fromIndex, 1);
+  state.journalSectionsDraft.splice(toIndex, 0, item);
+  renderJournalPrompt();
 }
 
 async function loadJournalPrompt() {
@@ -2570,6 +2585,70 @@ $("#prompt-sections")?.addEventListener("click", (event) => {
   state.journalSectionsDraft.splice(index, 1);
   renderJournalPrompt();
 });
+
+(() => {
+  const list = $("#prompt-sections");
+  if (!list) return;
+  let dragFrom = null;
+
+  list.addEventListener("dragstart", (event) => {
+    if (!state.journalPromptEditing) return;
+    const handle = event.target.closest?.(".prompt-section-drag");
+    const chip = handle?.closest?.(".prompt-section-chip.is-editing");
+    if (!handle || !chip || chip.classList.contains("prompt-section-add")) {
+      event.preventDefault();
+      return;
+    }
+    dragFrom = Number(chip.dataset.index);
+    if (!Number.isInteger(dragFrom)) {
+      event.preventDefault();
+      return;
+    }
+    chip.classList.add("is-dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(dragFrom));
+    try {
+      event.dataTransfer.setDragImage(chip, 12, 12);
+    } catch (_) {
+      /* ignore */
+    }
+  });
+
+  list.addEventListener("dragend", () => {
+    dragFrom = null;
+    list.querySelectorAll(".prompt-section-chip.is-dragging, .prompt-section-chip.is-drop-target").forEach((el) => {
+      el.classList.remove("is-dragging", "is-drop-target");
+    });
+  });
+
+  list.addEventListener("dragover", (event) => {
+    if (!state.journalPromptEditing || dragFrom == null) return;
+    const chip = event.target.closest?.(".prompt-section-chip.is-editing");
+    if (!chip || chip.classList.contains("prompt-section-add")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    list.querySelectorAll(".prompt-section-chip.is-drop-target").forEach((el) => {
+      if (el !== chip) el.classList.remove("is-drop-target");
+    });
+    if (Number(chip.dataset.index) !== dragFrom) chip.classList.add("is-drop-target");
+  });
+
+  list.addEventListener("dragleave", (event) => {
+    const chip = event.target.closest?.(".prompt-section-chip.is-editing");
+    if (!chip) return;
+    if (!chip.contains(event.relatedTarget)) chip.classList.remove("is-drop-target");
+  });
+
+  list.addEventListener("drop", (event) => {
+    if (!state.journalPromptEditing || dragFrom == null) return;
+    const chip = event.target.closest?.(".prompt-section-chip.is-editing");
+    if (!chip || chip.classList.contains("prompt-section-add")) return;
+    event.preventDefault();
+    const toIndex = Number(chip.dataset.index);
+    reorderPromptSection(dragFrom, toIndex);
+    dragFrom = null;
+  });
+})();
 
 $("#schedule-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();

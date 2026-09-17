@@ -1838,7 +1838,7 @@ button[type="submit"]:disabled,
 
 .settings-label-hint .material-symbols-outlined {
   font-size: 16px;
-  opacity: 0.42;
+  opacity: 0.62;
 }
 
 .settings-label-hint:hover,
@@ -1848,7 +1848,7 @@ button[type="submit"]:disabled,
 
 .settings-label-hint:hover .material-symbols-outlined,
 .settings-label-hint:focus-visible .material-symbols-outlined {
-  opacity: 0.75;
+  opacity: 0.9;
 }
 
 .settings-label-hint::after {
@@ -2514,7 +2514,40 @@ button[type="submit"]:disabled,
 }
 
 .prompt-section-chip.is-editing {
-  padding: 5px 4px 5px 12px;
+  padding: 5px 4px 5px 6px;
+}
+
+.prompt-section-chip.is-editing.is-dragging {
+  opacity: 0.45;
+}
+
+.prompt-section-chip.is-editing.is-drop-target {
+  box-shadow: 0 0 0 2px rgb(30 58 138 / 0.35);
+}
+
+.prompt-section-drag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  opacity: 0.45;
+  cursor: grab;
+  flex: 0 0 auto;
+  line-height: 1;
+  user-select: none;
+}
+
+.prompt-section-drag:active {
+  cursor: grabbing;
+}
+
+.prompt-section-drag .material-symbols-outlined {
+  font-size: 16px;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
+}
+
+.prompt-section-chip.is-editing:hover .prompt-section-drag {
+  opacity: 0.75;
 }
 
 .prompt-section-label {
