@@ -1767,6 +1767,11 @@ button[type="submit"]:disabled,
   display: grid;
   gap: 0;
   background: transparent;
+  overflow: visible;
+}
+
+.run-fields {
+  overflow: visible;
 }
 
 .settings-row {
@@ -1809,6 +1814,60 @@ button[type="submit"]:disabled,
 .settings-label {
   flex: 0 1 auto;
   min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow: visible;
+}
+
+.settings-row:has(.settings-label-hint) {
+  position: relative;
+  overflow: visible;
+  z-index: 0;
+}
+
+.settings-row:has(.settings-label-hint:hover),
+.settings-row:has(.settings-label-hint:focus-within) {
+  z-index: 40;
+}
+
+.settings-label-hint {
+  margin-left: 2px;
+  z-index: 1;
+}
+
+.settings-label-hint .material-symbols-outlined {
+  font-size: 16px;
+  opacity: 0.42;
+}
+
+.settings-label-hint:hover,
+.settings-label-hint:focus-visible {
+  z-index: 50;
+}
+
+.settings-label-hint:hover .material-symbols-outlined,
+.settings-label-hint:focus-visible .material-symbols-outlined {
+  opacity: 0.75;
+}
+
+.settings-label-hint::after {
+  left: 0;
+  right: auto;
+  bottom: calc(100% + 10px);
+  top: auto;
+  z-index: 50;
+  max-width: 200px;
+}
+
+.settings-label-hint::before {
+  left: 6px;
+  right: auto;
+  bottom: calc(100% + 4px);
+  top: auto;
+  z-index: 51;
+  border-top-color: #1f2937;
+  border-bottom-color: transparent;
 }
 
 .settings-trailing {

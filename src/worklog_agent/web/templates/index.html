@@ -7,7 +7,7 @@
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" sizes="180x180">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=model-chip-4">
+  <link rel="stylesheet" href="/static/dashboard.css?v=range-info-3">
 </head>
 <body class="login-mode">
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
@@ -257,7 +257,18 @@
                   </span>
                 </label>
                 <label class="settings-row settings-row-date" for="run-end">
-                  <span class="settings-label">종료</span>
+                  <span class="settings-label">
+                    종료
+                    <span
+                      class="field-hint settings-label-hint"
+                      tabindex="0"
+                      aria-label="선택 제한"
+                      data-tip="최대 31일까지 선택할 수 있습니다."
+                      onclick="event.preventDefault()"
+                    >
+                      <span class="material-symbols-outlined" aria-hidden="true">info</span>
+                    </span>
+                  </span>
                   <span class="settings-trailing settings-trailing-date">
                     <input type="date" id="run-end" name="end" value="{{ today }}">
                     <svg class="settings-icon settings-calendar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -275,7 +286,18 @@
 
               <div id="run-pick-fields" class="run-fields hidden">
                 <div class="settings-row settings-row-date">
-                  <span class="settings-label">날짜 추가</span>
+                  <span class="settings-label">
+                    날짜 추가
+                    <span
+                      class="field-hint settings-label-hint"
+                      tabindex="0"
+                      aria-label="선택 제한"
+                      data-tip="최대 31일까지 추가할 수 있습니다."
+                      onclick="event.preventDefault()"
+                    >
+                      <span class="material-symbols-outlined" aria-hidden="true">info</span>
+                    </span>
+                  </span>
                   <span class="settings-trailing settings-trailing-date settings-pick-add">
                     <input type="date" id="run-pick-date" value="{{ today }}">
                     <button type="button" id="run-pick-add" class="settings-add-btn" title="추가" aria-label="추가">
@@ -337,9 +359,8 @@
               </div>
             </div>
 
-            <p id="run-range-hint" class="run-hint hidden">최대 31일까지 선택할 수 있습니다.</p>
             <ul id="run-pick-list" class="run-pick-list"></ul>
-            <p id="run-pick-hint" class="run-hint hidden">날짜를 추가하세요. 최대 31일.</p>
+            <p id="run-pick-hint" class="run-hint hidden"></p>
 
             <div class="run-actions">
               <button type="button" id="run-preview-button" class="icon-btn" title="미리보기" aria-label="미리보기" aria-pressed="false">
@@ -526,6 +547,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-  <script src="/static/dashboard.js?v=model-chip-4"></script>
+  <script src="/static/dashboard.js?v=range-info-3"></script>
 </body>
 </html>

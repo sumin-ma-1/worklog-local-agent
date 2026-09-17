@@ -1499,9 +1499,8 @@ function setRunMode(mode) {
   $("#run-single-fields")?.classList.toggle("hidden", mode !== "single");
   $("#run-range-fields")?.classList.toggle("hidden", mode !== "range");
   $("#run-pick-fields")?.classList.toggle("hidden", mode !== "pick");
-  $("#run-range-hint")?.classList.toggle("hidden", mode !== "range");
   $("#run-pick-list")?.classList.toggle("hidden", mode !== "pick");
-  $("#run-pick-hint")?.classList.toggle("hidden", mode !== "pick");
+  $("#run-pick-hint")?.classList.toggle("hidden", mode !== "pick" || !runPickDates.size);
   syncRunStepsForSelectedDate();
 }
 
@@ -1610,7 +1609,10 @@ function renderRunPickList() {
   const dates = [...runPickDates].sort().reverse();
   if (!dates.length) {
     list.innerHTML = "";
-    if (hint) hint.textContent = "날짜를 추가하세요. 최대 31일.";
+    if (hint) {
+      hint.textContent = "";
+      hint.classList.add("hidden");
+    }
     return;
   }
   list.innerHTML = dates
@@ -1619,7 +1621,10 @@ function renderRunPickList() {
         `<li><button type="button" class="run-pick-chip" data-day="${escapeHtml(day)}" title="클릭하여 제거">${escapeHtml(day)}<span class="material-symbols-outlined" aria-hidden="true">close</span></button></li>`
     )
     .join("");
-  if (hint) hint.textContent = `${dates.length}일 선택 · 최대 ${RUN_PICK_MAX}일`;
+  if (hint) {
+    hint.textContent = `${dates.length}일 선택 · 최대 ${RUN_PICK_MAX}일`;
+    hint.classList.toggle("hidden", runMode !== "pick");
+  }
 }
 
 function addRunPickDate(day) {
