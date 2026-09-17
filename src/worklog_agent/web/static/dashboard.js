@@ -363,9 +363,34 @@ function renderSidebarAccount() {
 function setAccountTipOpen(open) {
   const btn = $("#sidebar-account");
   const tip = $("#sidebar-account-tip");
+  const shell = $("#app-shell");
   if (!btn || !tip) return;
   btn.setAttribute("aria-expanded", open ? "true" : "false");
   tip.classList.toggle("hidden", !open);
+  if (!open) {
+    tip.style.top = "";
+    tip.style.bottom = "";
+    tip.style.left = "";
+    return;
+  }
+  if (shell?.classList.contains("sidebar-wide")) {
+    tip.style.top = "";
+    tip.style.bottom = "";
+    tip.style.left = "";
+    return;
+  }
+  const rect = btn.getBoundingClientRect();
+  const gap = 16;
+  tip.style.left = `${Math.round(rect.right + gap)}px`;
+  tip.style.bottom = "auto";
+  tip.style.top = `${Math.round(rect.top)}px`;
+  requestAnimationFrame(() => {
+    const tipRect = tip.getBoundingClientRect();
+    const overflow = tipRect.bottom - window.innerHeight + 12;
+    if (overflow > 0) {
+      tip.style.top = `${Math.max(12, Math.round(rect.top - overflow))}px`;
+    }
+  });
 }
 
 function goJournalHome() {
