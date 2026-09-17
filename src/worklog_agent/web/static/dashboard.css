@@ -704,8 +704,9 @@ main {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  height: 100%;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .journal-calendar-panel,
@@ -726,14 +727,21 @@ main {
 }
 
 .journal-list-panel {
-  flex: 1 1 auto;
-  min-height: 120px;
+  flex: 1 1 0%;
+  min-height: 0;
   padding: 14px;
+  overflow: hidden;
 }
 
 .journal-calendar-panel.panel,
 .journal-list-panel.panel {
   min-height: 0;
+}
+
+.journal-list-panel > .list-scroll-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
 }
 
 .list button.link.selected {
@@ -2289,28 +2297,48 @@ button[type="submit"]:disabled,
 
 .run-actions {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
+}
+
+.run-preview-link {
+  align-self: flex-end;
+  display: inline-flex;
   align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.15s ease, color 0.15s ease;
 }
 
-.run-actions #run-preview-button {
-  flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
-  opacity: 0.7;
+.run-preview-link:hover,
+.run-preview-link.is-active {
+  opacity: 0.9;
+  color: var(--accent);
 }
 
-.run-actions #run-preview-button:hover,
-.run-actions #run-preview-button.is-active {
-  opacity: 1;
+.run-preview-link .material-symbols-outlined {
+  font-size: 15px;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
+  line-height: 1;
 }
 
-.run-actions #run-preview-button .material-symbols-outlined {
-  font-size: 22px;
+.run-preview-label {
+  letter-spacing: -0.01em;
 }
 
 .run-actions #run-button {
-  flex: 1;
+  width: 100%;
 }
 
 .run-plan-float {
@@ -3230,9 +3258,17 @@ button[type="submit"]:disabled,
     align-items: start;
   }
   .dialogs-panel,
-  .journal-browse,
   .journal-detail-panel {
     max-height: min(60vh, 560px);
+  }
+  .journal-browse {
+    height: min(60vh, 560px);
+    max-height: min(60vh, 560px);
+    overflow: hidden;
+  }
+  .journal-list-panel {
+    flex: 1 1 0%;
+    min-height: 0;
   }
 }
 
