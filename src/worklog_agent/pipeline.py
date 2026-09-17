@@ -70,6 +70,7 @@ class Pipeline:
         day: str | None = None,
         *,
         generate_type: str = "combined",
+        fill_missing: bool = False,
         on_progress: ProgressFn | None = None,
     ) -> str:
         resolved = target_day(day, self.config.timezone)
@@ -86,18 +87,29 @@ class Pipeline:
 
         want_combined = kind in {"combined", "both"}
         want_rooms = kind in {"per_room", "both"}
-        primary_path: str | None = None
+        existing_combined = self.storage.journal_path(resolved).exists()
+        existing_rooms = bool(self.storage.list_room_journals(resolved))
+        if fill_missing and kind == "both":
+            do_combined = not existing_combined
+            do_rooms = not existing_rooms
+        else:
+            do_combined = want_combined
+            do_rooms = want_rooms
 
-        if want_combined:
+        primary_path: str | None = None
+        if existing_combined:
+            primary_path = str(self.storage.journal_path(resolved))
+
+        if do_combined:
             await emit_progress(on_progress, f"{resolved} · 통합 일지 생성 중 ({model})", "journal")
             markdown = await generate_journal(bundle, self.config, model=model, scope="combined")
             primary_path = str(self.storage.save_journal(resolved, markdown))
-        else:
-            # 방마다만 생성하면 이전 통합본은 제거해 열람 목록을 맞춘다.
-            if self.storage.journal_path(resolved).exists():
-                self.storage.journal_path(resolved).unlink()
+        elif want_combined is False and existing_combined:
+            # 방마다만 남기는 경우 통합본 제거
+            self.storage.journal_path(resolved).unlink()
+            primary_path = None
 
-        if want_rooms:
+        if do_rooms:
             self.storage.clear_room_journals(resolved)
             rooms_meta: list[dict[str, str]] = []
             total_rooms = len(bundle.chats) or 1
@@ -116,7 +128,7 @@ class Pipeline:
                 if primary_path is None:
                     primary_path = str(path)
             self.storage.write_room_journals_index(resolved, rooms_meta)
-        else:
+        elif want_rooms is False:
             self.storage.clear_room_journals(resolved)
 
         write_journal_meta(
@@ -142,6 +154,7 @@ class Pipeline:
         day: str | None = None,
         *,
         generate_type: str = "combined",
+        fill_missing: bool = False,
         on_progress: ProgressFn | None = None,
     ) -> str:
         resolved = target_day(day, self.config.timezone)
@@ -150,7 +163,10 @@ class Pipeline:
         await emit_progress(on_progress, f"{resolved} · 첨부 저장 중", "archive")
         archived = await self.archive(on_progress=on_progress)
         path = await self.journal(
-            resolved, generate_type=generate_type, on_progress=on_progress
+            resolved,
+            generate_type=generate_type,
+            fill_missing=fill_missing,
+            on_progress=on_progress,
         )
         logger.info("파이프라인 완료: 수집 %s, 첨부 %s, 일지 %s", collected, archived, path)
         return path

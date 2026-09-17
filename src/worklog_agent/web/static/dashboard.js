@@ -2155,6 +2155,9 @@ const PLAN_REASON_LABEL = {
   stale: "소스 변경됨",
   up_to_date: "최신",
   legacy_no_meta: "메타 없음(건너뜀)",
+  generate_type_changed: "생성 유형 변경",
+  fill_combined: "통합 추가",
+  fill_rooms: "방마다 추가",
 };
 
 function setRunMode(mode) {
@@ -2246,6 +2249,7 @@ function selectRunGenerateType(value) {
   if (!input || !RUN_GENERATE_TYPE_LABEL[value]) return;
   input.value = value;
   syncRunGenerateTypeSummary();
+  hideRunPlan();
   closeSettingsMenus();
 }
 

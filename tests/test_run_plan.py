@@ -133,6 +133,57 @@ def test_plan_run_days_regenerate_if_stale_detects_change(tmp_path: Path) -> Non
     assert plan[0]["is_stale"] is True
 
 
+def test_plan_run_days_regenerate_when_generate_type_changes(tmp_path: Path) -> None:
+    root = tmp_path / "data"
+    storage = Storage(root)
+    storage.ensure()
+    storage.journal_path("2026-05-01").write_text("# one", encoding="utf-8")
+    write_journal_meta(
+        storage,
+        "2026-05-01",
+        source_fingerprint="fp",
+        generate_type="combined",
+    )
+
+    skipped = plan_run_days(
+        storage,
+        ["2026-05-01"],
+        skip_existing=True,
+        generate_type="combined",
+    )
+    assert skipped[0]["action"] == "skip"
+
+    changed = plan_run_days(
+        storage,
+        ["2026-05-01"],
+        skip_existing=True,
+        generate_type="both",
+    )
+    assert changed[0]["action"] == "run"
+    assert changed[0]["reason"] == "fill_rooms"
+    assert changed[0]["fill_missing"] is True
+    assert changed[0]["previous_generate_type"] == "combined"
+
+    rooms_only = Storage(tmp_path / "rooms")
+    rooms_only.ensure()
+    rooms_only.save_room_journal("2026-05-02", -1001, "# room\n")
+    rooms_only.write_room_journals_index("2026-05-02", [{"id": "-1001", "title": "team"}])
+    write_journal_meta(
+        rooms_only,
+        "2026-05-02",
+        source_fingerprint="fp",
+        generate_type="per_room",
+    )
+    fill_from_rooms = plan_run_days(
+        rooms_only,
+        ["2026-05-02"],
+        skip_existing=True,
+        generate_type="both",
+    )
+    assert fill_from_rooms[0]["reason"] == "fill_combined"
+    assert fill_from_rooms[0]["fill_missing"] is True
+
+
 def test_plan_run_days_regenerate_if_stale_legacy_without_meta(tmp_path: Path) -> None:
     root = tmp_path / "data"
     storage = Storage(root)

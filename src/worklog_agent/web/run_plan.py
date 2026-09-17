@@ -62,6 +62,24 @@ def day_has_source(storage: Storage, day: str) -> bool:
     return False
 
 
+def stored_generate_type(storage: Storage, day: str, meta: dict | None = None) -> str | None:
+    """Best-effort previous generate type from meta or on-disk journals."""
+    payload = meta if meta is not None else (read_journal_meta(storage, day) if storage.has_any_journal(day) else None)
+    if payload and payload.get("generate_type"):
+        raw = str(payload.get("generate_type") or "").strip().lower()
+        if raw in {"combined", "per_room", "both"}:
+            return raw
+    has_combined = storage.journal_path(day).exists()
+    has_rooms = bool(storage.list_room_journals(day))
+    if has_combined and has_rooms:
+        return "both"
+    if has_rooms:
+        return "per_room"
+    if has_combined:
+        return "combined"
+    return None
+
+
 def plan_run_days(
     storage: Storage,
     dates: list[str],
@@ -69,14 +87,20 @@ def plan_run_days(
     skip_existing: bool = False,
     regenerate_if_stale: bool = False,
     force: bool = False,
+    generate_type: str = "combined",
     tz_name: str = "Asia/Seoul",
 ) -> list[dict]:
+    from worklog_agent.journal import normalize_generate_type
+
+    wanted = normalize_generate_type(generate_type)
     items: list[dict] = []
     for day in dates:
         has_journal = storage.has_any_journal(day)
         has_daily = storage.daily_path(day).exists()
         has_source = day_has_source(storage, day)
         meta = read_journal_meta(storage, day) if has_journal else None
+        previous_type = stored_generate_type(storage, day, meta) if has_journal else None
+        type_changed = bool(has_journal and previous_type and previous_type != wanted)
         current_fp = day_source_fingerprint(storage, day, tz_name) if has_journal else None
         stored_fp = meta.get("source_fingerprint") if meta else None
         is_stale = bool(
@@ -89,10 +113,21 @@ def plan_run_days(
         if force:
             action = "run"
             reason = "force"
+            fill_missing = False
+        elif type_changed:
+            action = "run"
+            # 통합↔방마다에서 통합+방마다로 올릴 때는 없는 쪽만 채운다.
+            fill_missing = wanted == "both" and previous_type in {"combined", "per_room"}
+            if fill_missing:
+                reason = "fill_combined" if previous_type == "per_room" else "fill_rooms"
+            else:
+                reason = "generate_type_changed"
         elif skip_existing and has_journal:
             action = "skip"
             reason = "already_exists"
+            fill_missing = False
         elif regenerate_if_stale and has_journal:
+            fill_missing = False
             if not meta or stored_fp is None:
                 action = "skip"
                 reason = "legacy_no_meta"
@@ -105,6 +140,7 @@ def plan_run_days(
         else:
             action = "run"
             reason = "missing_journal" if not has_journal else "regenerate"
+            fill_missing = False
         items.append(
             {
                 "date": day,
@@ -114,6 +150,10 @@ def plan_run_days(
                 "has_daily": has_daily,
                 "has_source": has_source,
                 "is_stale": is_stale,
+                "generate_type": wanted,
+                "previous_generate_type": previous_type,
+                "generate_type_changed": type_changed,
+                "fill_missing": fill_missing,
             }
         )
     return items

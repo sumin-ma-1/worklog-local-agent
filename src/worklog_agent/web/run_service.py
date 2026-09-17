@@ -80,6 +80,8 @@ def runtime_is_busy(runtime: UserRuntime) -> bool:
 
 
 def build_plan(cfg: AppConfig, body: dict[str, Any]) -> list[dict]:
+    from worklog_agent.journal import normalize_generate_type
+
     dates = resolve_run_dates(
         date=body.get("date"),
         start=body.get("start"),
@@ -87,12 +89,14 @@ def build_plan(cfg: AppConfig, body: dict[str, Any]) -> list[dict]:
         dates=body.get("dates"),
     )
     storage = Storage(cfg.data_root)
+    generate_type = normalize_generate_type(body.get("generate_type"))
     return plan_run_days(
         storage,
         dates,
         skip_existing=bool(body.get("skip_existing")),
         regenerate_if_stale=bool(body.get("regenerate_if_stale")),
         force=bool(body.get("force")),
+        generate_type=generate_type,
         tz_name=cfg.timezone,
     )
 
@@ -206,6 +210,7 @@ async def _run_pipeline_queue(
             path = await Pipeline(cfg).run(
                 day,
                 generate_type=generate_type,
+                fill_missing=bool(item.get("fill_missing")),
                 on_progress=progress,
             )
             last_path = path

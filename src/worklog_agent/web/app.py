@@ -1281,6 +1281,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     @app.post("/api/run/plan")
     async def run_plan(request: Request, body: RunBody) -> dict:
         _, cfg = require_telegram(request)
+        from worklog_agent.journal import normalize_generate_type
+
         try:
             dates = resolve_run_dates(
                 date=body.date,
@@ -1288,6 +1290,10 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                 end=body.end,
                 dates=body.dates,
             )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            generate_type = normalize_generate_type(body.generate_type)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         for day in dates:
@@ -1299,6 +1305,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             skip_existing=body.skip_existing,
             regenerate_if_stale=body.regenerate_if_stale,
             force=body.force,
+            generate_type=generate_type,
             tz_name=cfg.timezone,
         )
         return {
