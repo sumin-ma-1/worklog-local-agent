@@ -3001,13 +3001,6 @@ function renderRunPlan(data) {
   });
 }
 
-const SCHEDULE_STATUS_LABEL = {
-  started: "시작됨",
-  skipped: "건너뜀",
-  error: "오류",
-  busy: "실행 중",
-};
-
 async function loadSchedules() {
   if (!state.authorized) return;
   try {
@@ -3169,6 +3162,27 @@ function schedulePolicyFromItem(item) {
   return "skip";
 }
 
+function formatScheduleLastRun(iso) {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return String(iso).replace("T", " ").slice(0, 16);
+  }
+  try {
+    return new Intl.DateTimeFormat("sv-SE", {
+      timeZone: state.timezone || "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(date);
+  } catch {
+    return String(iso).replace("T", " ").slice(0, 16);
+  }
+}
+
 function renderSchedules(items) {
   const list = $("#schedule-list");
   if (!list) return;
@@ -3182,10 +3196,7 @@ function renderSchedules(items) {
       const generateType =
         RUN_GENERATE_TYPE_LABEL[item.generate_type] || RUN_GENERATE_TYPE_LABEL.combined;
       const policy = RUN_POLICY_LABEL[schedulePolicyFromItem(item)] || RUN_POLICY_LABEL.skip;
-      const status = item.last_status
-        ? SCHEDULE_STATUS_LABEL[item.last_status] || item.last_status
-        : "—";
-      const last = item.last_run_at ? item.last_run_at.replace("T", " ").slice(0, 16) : "—";
+      const last = formatScheduleLastRun(item.last_run_at);
       return `<li class="schedule-item${item.enabled ? "" : " is-disabled"}">
         <div class="schedule-item-head">
           <strong>${escapeHtml(item.name)}</strong>
@@ -3196,8 +3207,7 @@ function renderSchedules(items) {
         <div class="schedule-item-body">
           <div class="schedule-item-main">
             <span class="schedule-meta">${escapeHtml(item.time)} · ${escapeHtml(target)} · ${escapeHtml(generateType)} · ${escapeHtml(policy)}</span>
-            <span class="schedule-meta">최근 ${escapeHtml(last)} · ${escapeHtml(status)}</span>
-            ${item.last_message ? `<span class="schedule-meta">${escapeHtml(item.last_message)}</span>` : ""}
+            <span class="schedule-meta">최근 실행 ${last ? escapeHtml(last) : "—"}</span>
           </div>
           <label class="switch schedule-toggle" title="예약 사용" data-schedule-toggle="${escapeHtml(item.id)}">
             <input type="checkbox" ${item.enabled ? "checked" : ""} aria-label="예약 사용">
