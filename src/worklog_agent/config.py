@@ -14,6 +14,7 @@ class EnvSettings(BaseSettings):
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None
     telegram_phone: str | None = None
+    telegram_bot_token: str | None = None
     ollama_host: str | None = None
     ollama_model: str | None = None
 
@@ -27,6 +28,7 @@ class EnvSettings(BaseSettings):
         "telegram_api_id",
         "telegram_api_hash",
         "telegram_phone",
+        "telegram_bot_token",
         "ollama_host",
         "ollama_model",
         mode="before",
@@ -41,6 +43,8 @@ class EnvSettings(BaseSettings):
 class TelegramConfig(BaseModel):
     session_name: str = "worklog"
     chats: list[str | int] = Field(default_factory=list)
+    # 대시보드 챗 헤더 바로가기용 BotFather username (없으면 버튼 숨김)
+    bot_username: str | None = None
 
 
 class StorageConfig(BaseModel):
@@ -114,6 +118,7 @@ _ENV_KEYS = (
     "TELEGRAM_API_ID",
     "TELEGRAM_API_HASH",
     "TELEGRAM_PHONE",
+    "TELEGRAM_BOT_TOKEN",
     "OLLAMA_HOST",
     "OLLAMA_MODEL",
 )

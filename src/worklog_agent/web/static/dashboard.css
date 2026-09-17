@@ -1132,9 +1132,42 @@ main {
   flex: 0 0 auto;
 }
 
+.journal-chat-head-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .journal-chat-head strong {
   font-size: 15px;
   color: var(--ink);
+}
+
+.journal-chat-bot-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: #2aabee;
+  text-decoration: none;
+  flex: 0 0 auto;
+}
+
+.journal-chat-bot-link.hidden {
+  display: none !important;
+}
+
+.journal-chat-bot-link:hover {
+  background: rgba(42, 171, 238, 0.12);
+}
+
+.journal-chat-bot-link .material-symbols-outlined {
+  font-size: 18px;
+  font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 20;
+  line-height: 1;
 }
 
 .journal-chat-body {
@@ -1285,7 +1318,8 @@ main {
   }
 }
 
-.journal-chat-msg .chat-day-link {
+.journal-chat-msg .chat-day-link,
+.journal-chat-msg .chat-run-link {
   display: inline-flex;
   margin-top: 6px;
   border: 0;
@@ -1295,6 +1329,14 @@ main {
   font-weight: 600;
   cursor: pointer;
   padding: 0;
+}
+
+.journal-chat-msg .chat-run-link {
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #e8eefc;
+  color: #1e3a8a;
 }
 
 .journal-chat-form {

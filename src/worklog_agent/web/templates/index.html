@@ -7,7 +7,7 @@
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" sizes="180x180">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=chat-size-1">
+  <link rel="stylesheet" href="/static/dashboard.css?v=tg-bot-1">
 </head>
 <body class="login-mode">
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
@@ -199,7 +199,12 @@
 
         <div id="journal-chat-panel" class="journal-chat-panel hidden" aria-hidden="true">
           <div class="journal-chat-head">
-            <strong>일지 에이전트</strong>
+            <div class="journal-chat-head-title">
+              <strong>일지 에이전트</strong>
+              <a id="journal-chat-bot-link" class="journal-chat-bot-link hidden" href="#" target="_blank" rel="noopener noreferrer" title="텔레그램 봇 열기" aria-label="텔레그램 봇 열기">
+                <span class="material-symbols-outlined" aria-hidden="true">send</span>
+              </a>
+            </div>
             <button type="button" id="journal-chat-close" class="icon-btn" title="닫기" aria-label="닫기">
               <span class="material-symbols-outlined" aria-hidden="true">close</span>
             </button>
@@ -653,6 +658,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-  <script src="/static/dashboard.js?v=chat-size-1"></script>
+  <script src="/static/dashboard.js?v=tg-bot-1"></script>
 </body>
 </html>

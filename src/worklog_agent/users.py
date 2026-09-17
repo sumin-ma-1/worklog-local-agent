@@ -211,6 +211,112 @@ def save_user_telegram(root: Path, updates: dict[str, Any]) -> dict[str, Any]:
     return current
 
 
+def bot_link_tokens_path(data_root: Path) -> Path:
+    return Path(data_root) / "bot_link_tokens.json"
+
+
+def _load_bot_link_tokens(data_root: Path) -> dict[str, Any]:
+    raw = _read_json(bot_link_tokens_path(data_root), {"tokens": {}})
+    if not isinstance(raw, dict):
+        return {"tokens": {}}
+    tokens = raw.get("tokens")
+    if not isinstance(tokens, dict):
+        tokens = {}
+    return {"tokens": tokens}
+
+
+def _save_bot_link_tokens(data_root: Path, payload: dict[str, Any]) -> None:
+    _write_json(bot_link_tokens_path(data_root), payload)
+
+
+def create_bot_link_token(data_root: Path, user_id: int | str, *, ttl_seconds: int = 3600) -> str:
+    """Create a short-lived deep-link token for t.me/Bot?start=<token>."""
+    payload = _load_bot_link_tokens(data_root)
+    tokens: dict[str, Any] = dict(payload.get("tokens") or {})
+    # Drop expired
+    now = datetime.now(timezone.utc)
+    cleaned: dict[str, Any] = {}
+    for key, item in tokens.items():
+        if not isinstance(item, dict):
+            continue
+        exp = str(item.get("expires_at") or "")
+        try:
+            if datetime.fromisoformat(exp) > now:
+                cleaned[key] = item
+        except ValueError:
+            continue
+    token = secrets.token_urlsafe(16).replace("-", "").replace("_", "")[:24]
+    expires = now.timestamp() + max(60, int(ttl_seconds))
+    cleaned[token] = {
+        "user_id": str(user_id),
+        "expires_at": datetime.fromtimestamp(expires, tz=timezone.utc).isoformat(),
+    }
+    _save_bot_link_tokens(data_root, {"tokens": cleaned})
+    return token
+
+
+def consume_bot_link_token(data_root: Path, token: str) -> str | None:
+    """Return dashboard user_id for a valid token and invalidate it."""
+    raw = str(token or "").strip()
+    if not raw:
+        return None
+    payload = _load_bot_link_tokens(data_root)
+    tokens: dict[str, Any] = dict(payload.get("tokens") or {})
+    item = tokens.pop(raw, None)
+    _save_bot_link_tokens(data_root, {"tokens": tokens})
+    if not isinstance(item, dict):
+        return None
+    exp = str(item.get("expires_at") or "")
+    try:
+        if datetime.fromisoformat(exp) <= datetime.now(timezone.utc):
+            return None
+    except ValueError:
+        return None
+    user_id = str(item.get("user_id") or "").strip()
+    return user_id or None
+
+
+def resolve_account_by_telegram_id(data_root: Path, telegram_user_id: int | str) -> str | None:
+    """Find dashboard user id whose telegram.json.telegram_user_id matches."""
+    want = str(telegram_user_id).strip()
+    if not want:
+        return None
+    base = users_dir(data_root)
+    if not base.is_dir():
+        return None
+    for path in sorted(base.iterdir()):
+        if not path.is_dir():
+            continue
+        meta = load_user_telegram(path)
+        if str(meta.get("telegram_user_id") or "").strip() == want:
+            return path.name
+    return None
+
+
+def mark_bot_linked(
+    data_root: Path,
+    user_id: int | str,
+    *,
+    telegram_user_id: int | str,
+    chat_id: int | str | None = None,
+) -> dict[str, Any]:
+    root = ensure_user_root(data_root, user_id)
+    updates: dict[str, Any] = {
+        "telegram_user_id": int(telegram_user_id)
+        if str(telegram_user_id).lstrip("-").isdigit()
+        else str(telegram_user_id),
+        "bot_linked_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if chat_id is not None:
+        updates["bot_chat_id"] = int(chat_id) if str(chat_id).lstrip("-").isdigit() else chat_id
+    return save_user_telegram(root, updates)
+
+
+def is_bot_linked(root: Path) -> bool:
+    meta = load_user_telegram(root)
+    return bool(meta.get("bot_linked_at") or meta.get("bot_chat_id"))
+
+
 def telegram_session_file(root: Path, session_name: str = "worklog") -> Path:
     return Path(root) / "sessions" / f"{session_name}.session"
 

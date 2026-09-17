@@ -49,12 +49,14 @@ from worklog_agent.telegram_auth import (
 )
 from worklog_agent.users import (
     add_user_chat,
+    create_bot_link_token,
     create_library_share_token,
     create_share_token,
     delete_user_data,
     ensure_user_root,
     find_share,
     find_telegram_link_owner,
+    is_bot_linked,
     journal_day_payload,
     library_share_for,
     load_user_chats,
@@ -383,6 +385,17 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
         thread = threading.Thread(target=scheduler_loop, daemon=True, name="worklog-scheduler")
         thread.start()
+        bot_thread = None
+        try:
+            from worklog_agent.telegram_bot import start_telegram_bot_thread
+
+            bot_thread = start_telegram_bot_thread(
+                state.config,
+                state.runtime_for,
+                stop,
+            )
+        except Exception:
+            logger.exception("텔레그램 봇 워커 시작 실패")
         yield
         stop.set()
 
@@ -790,7 +803,23 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             "api_ready": _api_ready(state.config),
             "user": None,
             "message": "텔레그램 연동이 필요합니다." if not linked else "연동됨",
+            "bot_url": None,
+            "bot_linked": False,
         }
+        from worklog_agent.web.chat_intent import telegram_bot_url
+
+        bot_username = getattr(state.config.telegram, "bot_username", None) or getattr(
+            cfg.telegram, "bot_username", None
+        )
+        start_token = None
+        if bot_username and linked:
+            try:
+                start_token = create_bot_link_token(state.config.data_root, user_id)
+            except Exception:
+                logger.exception("봇 연결 토큰 생성 실패")
+                start_token = None
+        telegram["bot_url"] = telegram_bot_url(bot_username, start=start_token)
+        telegram["bot_linked"] = is_bot_linked(cfg.data_root) if linked else False
         if linked:
             telegram["user"] = {
                 "id": meta.get("telegram_user_id"),
@@ -1183,66 +1212,15 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     @app.post("/api/journals/ask")
     async def ask_journals(request: Request, body: JournalAskBody) -> dict:
         _, cfg = require_telegram(request)
-        storage = Storage(cfg.data_root)
-        dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
-        snippets: list[str] = []
-        for day in dates[:40]:
-            chunks: list[str] = []
-            if storage.journal_path(day).exists():
-                text = (storage.read_journal(day) or "").strip()
-                if text:
-                    chunks.append(text[:1200])
-            for room in storage.list_room_journals(day)[:8]:
-                try:
-                    text = (storage.read_room_journal(day, room["id"]) or "").strip()
-                except FileNotFoundError:
-                    continue
-                if text:
-                    chunks.append(f"[{room['title']}]\n{text[:800]}")
-            if not chunks:
-                continue
-            snippets.append(f"## {day}\n" + "\n\n".join(chunks))
-        if not snippets:
-            return {
-                "answer": "아직 검색할 일지가 없습니다. 먼저 일지를 생성해 주세요.",
-                "days": [],
-            }
-        corpus = "\n\n".join(snippets)
-        question = body.question.strip()
-        if re.fullmatch(
-            r"(?i)(안녕(하세요|하십니까)?|하이+|헤이+|헬로+|hello|hi|hey|yo|"
-            r"반가워(요)?|반갑습니다|좋은\s*(아침|점심|저녁)(입니다|이에요|예요)?)"
-            r"[\s!?.~ㅋㅎ]*",
-            question,
-        ):
-            return {
-                "answer": "안녕하세요! 일지에서 찾아드릴 내용이 있으면 말씀해 주세요.",
-                "days": [],
-            }
-        system = (
-            "당신은 사용자의 업무 일지 검색 비서입니다. "
-            "일지 내용만 근거로 한국어로 짧고 정확하게 답하세요. "
-            "간단한 인사나 짧은 일상 대화에도 자연스럽고 친절하게 짧게 응답하세요. "
-            "인사·잡담에는 DAY 줄을 붙이지 마세요. "
-            "일지 관련 답변에서 관련 날짜가 있으면 답변 끝에 한 줄로 DAY:YYYY-MM-DD 형식으로 적어 주세요. "
-            "여러 날이면 가장 관련 있는 하루만 적으세요. 근거가 없으면 모른다고 말하세요."
-        )
-        user_prompt = f"질문: {question}\n\n일지:\n{corpus}"
-        try:
-            from worklog_agent.ollama import OllamaError, chat as ollama_chat
+        from worklog_agent.ollama import OllamaError
+        from worklog_agent.web.journal_ask import answer_journal_question
 
-            answer = await ollama_chat(cfg, system, user_prompt, model=cfg.journal.ollama.model)
+        try:
+            return await answer_journal_question(cfg, body.question.strip())
         except OllamaError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=500, detail=f"일지 질의 실패: {exc}") from exc
-
-        days: list[str] = []
-        match = re.search(r"DAY:(\d{4}-\d{2}-\d{2})", answer or "")
-        if match:
-            days.append(match.group(1))
-            answer = re.sub(r"\n?DAY:\d{4}-\d{2}-\d{2}\s*$", "", answer).strip()
-        return {"answer": answer or "답변을 만들지 못했습니다.", "days": days}
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @app.get("/api/attachments/file")
     async def attachment_file(request: Request, path: str = Query(..., min_length=1)) -> FileResponse:

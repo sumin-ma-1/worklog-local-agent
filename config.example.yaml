@@ -3,6 +3,8 @@ timezone: Asia/Seoul
 
 telegram:
   session_name: worklog
+  # 대시보드·봇 딥링크용 BotFather username (TELEGRAM_BOT_TOKEN 과 함께 설정)
+  # bot_username: WorklogBot
   # worklog-agent chats 로 확인한 채팅방 제목 또는 ID
   chats:
     - "팀 업무방"
