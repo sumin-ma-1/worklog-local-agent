@@ -161,6 +161,7 @@ class ScheduleBody(BaseModel):
     enabled: bool = True
     time: str = Field(min_length=5, max_length=5)
     target: str = Field(default="yesterday")
+    generate_type: str = "combined"
     skip_existing: bool = True
     regenerate_if_stale: bool = False
     force: bool = False
@@ -171,6 +172,7 @@ class SchedulePatchBody(BaseModel):
     enabled: bool | None = None
     time: str | None = Field(default=None, min_length=5, max_length=5)
     target: str | None = None
+    generate_type: str | None = None
     skip_existing: bool | None = None
     regenerate_if_stale: bool | None = None
     force: bool | None = None

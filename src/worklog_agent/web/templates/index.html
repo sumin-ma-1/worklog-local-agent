@@ -599,6 +599,30 @@
                 <input type="hidden" id="schedule-target" value="yesterday">
               </div>
               <div class="settings-disclose">
+                <button type="button" id="schedule-generate-type-toggle" class="settings-row settings-row-button" aria-expanded="false" aria-controls="schedule-generate-type-menu" aria-haspopup="listbox">
+                  <span class="settings-label">생성 유형</span>
+                  <span class="settings-trailing">
+                    <span id="schedule-generate-type-summary" class="settings-value">통합 한 번</span>
+                    <span class="material-symbols-outlined settings-chevron" aria-hidden="true">chevron_right</span>
+                  </span>
+                </button>
+                <div id="schedule-generate-type-menu" class="settings-menu hidden" role="listbox" aria-label="생성 유형 선택">
+                  <button type="button" class="settings-menu-item" role="option" data-generate-type="combined" aria-selected="true">
+                    <span>통합 한 번</span>
+                    <span class="material-symbols-outlined settings-check" aria-hidden="true">check</span>
+                  </button>
+                  <button type="button" class="settings-menu-item" role="option" data-generate-type="per_room" aria-selected="false">
+                    <span>방마다</span>
+                    <span class="material-symbols-outlined settings-check" aria-hidden="true">check</span>
+                  </button>
+                  <button type="button" class="settings-menu-item" role="option" data-generate-type="both" aria-selected="false">
+                    <span>통합 + 방마다</span>
+                    <span class="material-symbols-outlined settings-check" aria-hidden="true">check</span>
+                  </button>
+                </div>
+                <input type="hidden" id="schedule-generate-type" value="combined">
+              </div>
+              <div class="settings-disclose">
                 <button type="button" id="schedule-policy-toggle" class="settings-row settings-row-button" aria-expanded="false" aria-controls="schedule-policy-menu" aria-haspopup="listbox">
                   <span class="settings-label">생성 조건</span>
                   <span class="settings-trailing">
@@ -664,6 +688,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-  <script src="/static/dashboard.js?v=dock-click-1"></script>
+  <script src="/static/dashboard.js?v=schedule-gen-type-1"></script>
 </body>
 </html>

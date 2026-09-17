@@ -334,6 +334,7 @@ def _apply_schedule_intent(cfg: AppConfig, intent_info: dict[str, Any]) -> dict[
                     "enabled": True,
                     "time": time_str,
                     "target": target,
+                    "generate_type": "combined",
                     "skip_existing": True,
                     "regenerate_if_stale": False,
                     "force": False,

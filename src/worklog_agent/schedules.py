@@ -106,12 +106,19 @@ def _now_iso() -> str:
 
 
 def normalize_schedule(item: dict[str, Any]) -> dict[str, Any]:
+    from worklog_agent.journal import normalize_generate_type
+
+    try:
+        generate_type = normalize_generate_type(item.get("generate_type"))
+    except ValueError:
+        generate_type = "combined"
     return {
         "id": str(item.get("id") or ""),
         "name": str(item.get("name") or "").strip(),
         "enabled": bool(item.get("enabled", True)),
         "time": parse_schedule_time(str(item.get("time") or "09:00")),
         "target": parse_schedule_target(str(item.get("target") or "yesterday")),
+        "generate_type": generate_type,
         "skip_existing": bool(item.get("skip_existing", True)),
         "regenerate_if_stale": bool(item.get("regenerate_if_stale", False)),
         "force": bool(item.get("force", False)),
@@ -271,6 +278,7 @@ def tick_all_schedules(
                 "skip_existing": bool(schedule.get("skip_existing", True)),
                 "regenerate_if_stale": bool(schedule.get("regenerate_if_stale", False)),
                 "force": bool(schedule.get("force", False)),
+                "generate_type": str(schedule.get("generate_type") or "combined"),
             }
             try:
                 enqueue_planned_run(

@@ -2827,6 +2827,25 @@ function selectScheduleTarget(target) {
   closeSettingsMenus();
 }
 
+function selectedScheduleGenerateType() {
+  return $("#schedule-generate-type")?.value || "combined";
+}
+
+function syncScheduleGenerateTypeSummary() {
+  const summary = $("#schedule-generate-type-summary");
+  const value = selectedScheduleGenerateType();
+  if (summary) summary.textContent = RUN_GENERATE_TYPE_LABEL[value] || RUN_GENERATE_TYPE_LABEL.combined;
+  syncMenuSelection("#schedule-generate-type-menu", value, "generateType");
+}
+
+function selectScheduleGenerateType(value) {
+  const input = $("#schedule-generate-type");
+  if (!input || !RUN_GENERATE_TYPE_LABEL[value]) return;
+  input.value = value;
+  syncScheduleGenerateTypeSummary();
+  closeSettingsMenus();
+}
+
 function schedulePolicyBody(policy = selectedSchedulePolicy()) {
   return {
     skip_existing: policy === "skip",
@@ -3144,6 +3163,12 @@ function addPromptSection() {
   renderJournalPrompt(state.journalSectionsDraft.length - 1);
 }
 
+function schedulePolicyFromItem(item) {
+  if (item?.force) return "force";
+  if (item?.regenerate_if_stale) return "stale";
+  return "skip";
+}
+
 function renderSchedules(items) {
   const list = $("#schedule-list");
   if (!list) return;
@@ -3154,6 +3179,9 @@ function renderSchedules(items) {
   list.innerHTML = items
     .map((item) => {
       const target = SCHEDULE_TARGET_LABEL[item.target] || item.target;
+      const generateType =
+        RUN_GENERATE_TYPE_LABEL[item.generate_type] || RUN_GENERATE_TYPE_LABEL.combined;
+      const policy = RUN_POLICY_LABEL[schedulePolicyFromItem(item)] || RUN_POLICY_LABEL.skip;
       const status = item.last_status
         ? SCHEDULE_STATUS_LABEL[item.last_status] || item.last_status
         : "—";
@@ -3167,7 +3195,7 @@ function renderSchedules(items) {
         </div>
         <div class="schedule-item-body">
           <div class="schedule-item-main">
-            <span class="schedule-meta">${escapeHtml(item.time)} · ${escapeHtml(target)}</span>
+            <span class="schedule-meta">${escapeHtml(item.time)} · ${escapeHtml(target)} · ${escapeHtml(generateType)} · ${escapeHtml(policy)}</span>
             <span class="schedule-meta">최근 ${escapeHtml(last)} · ${escapeHtml(status)}</span>
             ${item.last_message ? `<span class="schedule-meta">${escapeHtml(item.last_message)}</span>` : ""}
           </div>
@@ -4056,6 +4084,20 @@ $("#schedule-target-menu")?.addEventListener("click", (event) => {
   selectScheduleTarget(choice.dataset.target);
 });
 
+$("#schedule-generate-type-toggle")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const toggle = $("#schedule-generate-type-toggle");
+  const menu = $("#schedule-generate-type-menu");
+  const open = toggle?.getAttribute("aria-expanded") === "true";
+  setSettingsMenuOpen(toggle, menu, !open);
+});
+
+$("#schedule-generate-type-menu")?.addEventListener("click", (event) => {
+  const choice = event.target.closest(".settings-menu-item");
+  if (!choice?.dataset.generateType) return;
+  selectScheduleGenerateType(choice.dataset.generateType);
+});
+
 $("#schedule-policy-toggle")?.addEventListener("click", (event) => {
   event.stopPropagation();
   const toggle = $("#schedule-policy-toggle");
@@ -4085,6 +4127,7 @@ document.addEventListener("keydown", (event) => {
 syncRunPolicySummary();
 syncRunGenerateTypeSummary();
 syncScheduleTargetSummary();
+syncScheduleGenerateTypeSummary();
 syncSchedulePolicySummary();
 syncRunPreferenceSummaries();
 setRunMode(runMode || "single");
@@ -4231,6 +4274,7 @@ $("#schedule-form")?.addEventListener("submit", async (event) => {
         name,
         time,
         target: selectedScheduleTarget(),
+        generate_type: selectedScheduleGenerateType(),
         ...schedulePolicyBody(),
         enabled: true,
       }),

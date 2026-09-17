@@ -24,9 +24,22 @@ def test_create_and_load_schedule(tmp_path: Path) -> None:
     )
     assert item["name"] == "매일"
     assert item["time"] == "21:00"
+    assert item["generate_type"] == "combined"
     schedules = load_schedules(root)
     assert len(schedules) == 1
     assert schedules[0]["id"] == item["id"]
+
+    typed = create_schedule(
+        root,
+        {
+            "name": "방마다",
+            "time": "22:00",
+            "target": "today",
+            "generate_type": "per_room",
+            "skip_existing": True,
+        },
+    )
+    assert typed["generate_type"] == "per_room"
 
 
 def test_parse_time_accepts_seconds() -> None:
