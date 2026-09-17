@@ -86,7 +86,9 @@ function showBanner(message, kind) {
   const icon =
     kind === "ok"
       ? `<span class="toast-icon" aria-hidden="true"><span class="material-symbols-outlined">task_alt</span></span>`
-      : "";
+      : kind === "error"
+        ? `<span class="toast-icon" aria-hidden="true"><span class="material-symbols-outlined">error</span></span>`
+        : "";
   el.innerHTML = `${icon}<span class="toast-text">${escapeHtml(message)}</span>`;
   el.className = `toast show ${kind || "info"}${icon ? " has-icon" : ""}`;
   toastTimer = setTimeout(() => {
@@ -233,6 +235,20 @@ function setAuthMode(mode) {
     gotoLogin?.classList.add("hidden");
     hints.forEach((el) => el.classList.add("hidden"));
   }
+  $("#goto-restart")?.classList.add("hidden");
+}
+
+function syncAuthFooter(mode) {
+  const footer = $("#auth-footer");
+  const register = $("#goto-register");
+  const login = $("#goto-login");
+  const restart = $("#goto-restart");
+  if (!footer) return;
+  footer.classList.remove("hidden");
+  const telegram = mode === "telegram";
+  register?.classList.toggle("hidden", telegram || state.authMode === "register");
+  login?.classList.toggle("hidden", telegram || state.authMode !== "register");
+  restart?.classList.toggle("hidden", !telegram);
 }
 
 function showAccountPanel() {
@@ -244,8 +260,8 @@ function showAccountPanel() {
   applyAdminNav(false);
   $("#auth-account-panel")?.classList.remove("hidden");
   $("#auth-telegram-panel")?.classList.add("hidden");
-  $("#auth-footer")?.classList.remove("hidden");
   setAuthMode(state.authMode === "register" ? "register" : "login");
+  syncAuthFooter("account");
 }
 
 function bindAuthSwitchers() {
@@ -261,10 +277,19 @@ function bindAuthSwitchers() {
   });
 }
 
+$("#password-confirm-input")?.addEventListener("paste", (event) => {
+  event.preventDefault();
+});
+$("#password-confirm-input")?.addEventListener("drop", (event) => {
+  event.preventDefault();
+});
+
 bindAuthSwitchers();
 
 const PHONE_COUNTRIES = [
   { dial: "+82", iso: "kr", name: "한국" },
+  { dial: "+33", iso: "fr", name: "프랑스" },
+  { dial: "+7", iso: "kz", name: "카자흐스탄" },
   { dial: "+81", iso: "jp", name: "일본" },
   { dial: "+1", iso: "us", name: "미국/캐나다" },
   { dial: "+86", iso: "cn", name: "중국" },
@@ -278,7 +303,6 @@ const PHONE_COUNTRIES = [
   { dial: "+91", iso: "in", name: "인도" },
   { dial: "+44", iso: "gb", name: "영국" },
   { dial: "+49", iso: "de", name: "독일" },
-  { dial: "+33", iso: "fr", name: "프랑스" },
   { dial: "+61", iso: "au", name: "호주" },
 ];
 
@@ -312,11 +336,23 @@ function setLoginCountry(dial, { close = true } = {}) {
 }
 
 function setCountryMenuOpen(open) {
+  const wrap = $("#login-country-menu-wrap");
   const menu = $("#login-country-menu");
   const trigger = $("#login-country-trigger");
-  if (!menu || !trigger) return;
-  menu.classList.toggle("hidden", !open);
+  if (!wrap || !trigger) return;
+  wrap.classList.toggle("hidden", !open);
   trigger.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open && menu) {
+    requestAnimationFrame(updateCountryMenuFade);
+  }
+}
+
+function updateCountryMenuFade() {
+  const wrap = $("#login-country-menu-wrap");
+  const menu = $("#login-country-menu");
+  if (!wrap || !menu || wrap.classList.contains("hidden")) return;
+  const more = menu.scrollTop + menu.clientHeight < menu.scrollHeight - 2;
+  wrap.classList.toggle("has-more", more);
 }
 
 function initPhoneCountryPicker() {
@@ -336,10 +372,12 @@ function initPhoneCountryPicker() {
   menu.querySelectorAll(".phone-country-option").forEach((btn) => {
     btn.addEventListener("click", () => setLoginCountry(btn.dataset.dial || "+82"));
   });
+  menu.addEventListener("scroll", updateCountryMenuFade, { passive: true });
   trigger.addEventListener("click", (event) => {
     event.preventDefault();
     if (trigger.disabled) return;
-    setCountryMenuOpen(menu.classList.contains("hidden"));
+    const wrap = $("#login-country-menu-wrap");
+    setCountryMenuOpen(Boolean(wrap?.classList.contains("hidden")));
   });
   document.addEventListener("click", (event) => {
     const root = $("#login-country-picker");
@@ -384,7 +422,7 @@ function showTelegramPanel(phone) {
   state.authenticated = true;
   $("#auth-account-panel")?.classList.add("hidden");
   $("#auth-telegram-panel")?.classList.remove("hidden");
-  $("#auth-footer")?.classList.add("hidden");
+  syncAuthFooter("telegram");
   initPhoneCountryPicker();
   const status = $("#login-status");
   if (phone) fillPhoneFields(phone);
@@ -448,6 +486,28 @@ async function doLogout() {
   showAccountPanel();
   applyAuthVisibility(false);
   showBanner("로그아웃되었습니다.", "ok");
+}
+
+async function doWithdraw() {
+  setAccountTipOpen(false);
+  const ok = await showConfirmToast("탈퇴 하시겠습니까? 일지와 데이터가 모두 삭제됩니다.", {
+    confirmLabel: "회원탈퇴",
+    confirmIcon: "move_item",
+    cancelLabel: "취소",
+    cancelIcon: "undo",
+  });
+  if (ok !== true) return;
+  await api("/api/auth/withdraw", { method: "POST", body: "{}" });
+  state.dialogs = [];
+  state.accounts = [];
+  state.loginStage = "idle";
+  state.authenticated = false;
+  state.username = null;
+  state.isAdmin = false;
+  showAccountPanel();
+  applyAuthVisibility(false);
+  applyAdminNav(false);
+  showBanner("회원탈퇴가 완료되었습니다.", "ok");
 }
 
 async function loadOverview() {
@@ -532,6 +592,8 @@ function goJournalHome() {
 
 const COMMON_TIMEZONES = [
   "Asia/Seoul",
+  "Europe/Paris",
+  "Asia/Almaty",
   "Asia/Tokyo",
   "Asia/Shanghai",
   "Asia/Singapore",
@@ -539,13 +601,58 @@ const COMMON_TIMEZONES = [
   "Asia/Bangkok",
   "UTC",
   "Europe/London",
-  "Europe/Paris",
   "Europe/Berlin",
   "America/Los_Angeles",
   "America/New_York",
   "America/Chicago",
   "Australia/Sydney",
 ];
+
+const TIMEZONE_FLAG_ISO = {
+  "Asia/Seoul": "kr",
+  "Europe/Paris": "fr",
+  "Asia/Almaty": "kz",
+  "Asia/Tokyo": "jp",
+  "Asia/Shanghai": "cn",
+  "Asia/Singapore": "sg",
+  "Asia/Hong_Kong": "hk",
+  "Asia/Bangkok": "th",
+  "Europe/London": "gb",
+  "Europe/Berlin": "de",
+  "America/Los_Angeles": "us",
+  "America/New_York": "us",
+  "America/Chicago": "us",
+  "Australia/Sydney": "au",
+};
+
+function timezoneFlagIso(tz) {
+  const value = String(tz || "");
+  if (TIMEZONE_FLAG_ISO[value]) return TIMEZONE_FLAG_ISO[value];
+  if (value.startsWith("Asia/Seoul")) return "kr";
+  if (value.startsWith("Europe/Paris")) return "fr";
+  if (value.startsWith("Asia/Almaty") || value.startsWith("Asia/Aqtobe") || value.startsWith("Asia/Atyrau")) {
+    return "kz";
+  }
+  if (value.startsWith("Asia/Tokyo")) return "jp";
+  if (value.startsWith("Asia/Shanghai") || value.startsWith("Asia/Chongqing")) return "cn";
+  if (value.startsWith("Asia/Singapore")) return "sg";
+  if (value.startsWith("Asia/Hong_Kong")) return "hk";
+  if (value.startsWith("Asia/Bangkok")) return "th";
+  if (value.startsWith("Europe/London")) return "gb";
+  if (value.startsWith("Europe/Berlin")) return "de";
+  if (value.startsWith("America/")) return "us";
+  if (value.startsWith("Australia/")) return "au";
+  return null;
+}
+
+function timezoneLabelHtml(tz) {
+  const value = String(tz || "—");
+  const iso = timezoneFlagIso(value);
+  const flag = iso
+    ? `<img class="tz-flag" src="${flagUrl(iso)}" alt="" width="20" height="15" decoding="async">`
+    : `<span class="material-symbols-outlined tz-flag-fallback" aria-hidden="true">public</span>`;
+  return `${flag}<span class="tz-name">${escapeHtml(value)}</span>`;
+}
 
 function timezoneOptions(current) {
   const values = [...COMMON_TIMEZONES];
@@ -565,7 +672,12 @@ function renderMenuOptions(menu, values, selected, attr) {
   if (!menu) return;
   menu.innerHTML = values
     .map((value) => {
-      const label = attr === "model" ? modelLabelHtml(value) : escapeHtml(value);
+      const label =
+        attr === "model"
+          ? modelLabelHtml(value)
+          : attr === "timezone"
+            ? timezoneLabelHtml(value)
+            : escapeHtml(value);
       return `<button type="button" class="settings-menu-item" role="option" data-${attr}="${escapeHtml(value)}" aria-selected="${
         value === selected ? "true" : "false"
       }"><span class="settings-menu-item-label">${label}</span><span class="material-symbols-outlined settings-check" aria-hidden="true">check</span></button>`;
@@ -578,7 +690,8 @@ function syncRunPreferenceSummaries() {
   const model = state.model || "—";
   if ($("#run-timezone")) $("#run-timezone").value = tz;
   if ($("#run-model")) $("#run-model").value = state.model || "";
-  if ($("#run-timezone-summary")) $("#run-timezone-summary").textContent = tz;
+  const tzSummary = $("#run-timezone-summary");
+  if (tzSummary) tzSummary.innerHTML = timezoneLabelHtml(tz);
   const modelSummary = $("#run-model-summary");
   if (modelSummary) modelSummary.innerHTML = modelLabelHtml(model);
   renderMenuOptions($("#run-timezone-menu"), timezoneOptions(tz), tz, "timezone");
@@ -2821,8 +2934,6 @@ $("#account-form")?.addEventListener("submit", async (event) => {
       applyAuthVisibility(false);
       if (!data.telegram?.api_ready) {
         showBanner("서버에 TELEGRAM_API_ID / HASH 설정이 필요합니다.", "error");
-      } else {
-        showBanner("텔레그램을 연동하세요.", "info");
       }
     }
   } catch (err) {
@@ -2844,12 +2955,12 @@ $("#login-form").addEventListener("submit", async (event) => {
   const phoneInput = $("#login-phone-input");
   const prevLabel = submitLabel?.textContent || "텔레그램 연동";
   if (submit) submit.disabled = true;
-  if (submitLabel) submitLabel.textContent = "코드 전송 중…";
+  if (submitLabel) submitLabel.textContent = "코드 전송 중";
   if (countryTrigger) countryTrigger.disabled = true;
   setCountryMenuOpen(false);
   if (phoneInput) phoneInput.disabled = true;
   if (status) {
-    status.textContent = "코드 전송 중…";
+    status.textContent = "코드 전송 중";
     status.classList.remove("hidden");
   }
   try {
@@ -2862,7 +2973,6 @@ $("#login-form").addEventListener("submit", async (event) => {
       status.textContent = data.message;
       status.classList.remove("hidden");
     }
-    showBanner(data.message, data.stage === "authorized" ? "ok" : "info");
     if (data.stage === "authorized") await enterDashboard();
   } catch (err) {
     if (status) {
@@ -2891,7 +3001,6 @@ $("#login-code-form").addEventListener("submit", async (event) => {
       status.textContent = data.message;
       status.classList.remove("hidden");
     }
-    showBanner(data.message, data.stage === "authorized" ? "ok" : "info");
     $("#login-code-input").value = "";
     if (data.stage === "authorized") await enterDashboard();
   } catch (err) {
@@ -2912,7 +3021,6 @@ $("#login-password-form").addEventListener("submit", async (event) => {
       status.textContent = data.message;
       status.classList.remove("hidden");
     }
-    showBanner(data.message, "ok");
     $("#login-password-input").value = "";
     if (data.stage === "authorized") await enterDashboard();
   } catch (err) {
@@ -2930,10 +3038,36 @@ async function restartLogin() {
   }
   $("#login-code-input").value = "";
   $("#login-password-input").value = "";
+  if ($("#login-phone-input")) $("#login-phone-input").value = "";
+  setLoginCountry("+82", { close: true });
+  setCountryMenuOpen(false);
 }
 
-$("#login-restart")?.addEventListener("click", restartLogin);
-$("#login-restart-password")?.addEventListener("click", restartLogin);
+async function backToAccountLogin() {
+  try {
+    await api("/api/auth/logout", { method: "POST", body: "{}" });
+  } catch (_) {
+    /* ignore */
+  }
+  state.dialogs = [];
+  state.loginStage = "idle";
+  state.authenticated = false;
+  state.username = null;
+  showAccountPanel();
+  applyAuthVisibility(false);
+}
+
+async function restartAuthFromTelegram() {
+  if (state.loginStage === "code" || state.loginStage === "password") {
+    await restartLogin();
+    return;
+  }
+  await backToAccountLogin();
+}
+
+$("#goto-restart")?.addEventListener("click", () => {
+  restartAuthFromTelegram().catch((err) => showBanner(err.message, "error"));
+});
 $("#sidebar-logout")?.addEventListener("click", async () => {
   const ok = await showConfirmToast("정말로 로그아웃하겠습니까?", {
     confirmLabel: "로그아웃",
@@ -2943,6 +3077,12 @@ $("#sidebar-logout")?.addEventListener("click", async () => {
   });
   if (ok !== true) return;
   doLogout().catch((err) => showBanner(err.message, "error"));
+});
+
+$("#account-withdraw")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  doWithdraw().catch((err) => showBanner(err.message, "error"));
 });
 
 $("#toast")?.addEventListener("click", (event) => {

@@ -53,6 +53,7 @@ from worklog_agent.users import (
     delete_user_data,
     ensure_user_root,
     find_share,
+    find_telegram_link_owner,
     library_share_for,
     load_user_chats,
     load_user_preferences,
@@ -445,6 +446,15 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         if result.get("stage") != "authorized" or not user:
             return result
         state.reload()
+        owner = find_telegram_link_owner(
+            state.config.data_root,
+            state.config.telegram.session_name,
+            phone=str(user.get("phone") or ""),
+            telegram_user_id=user.get("id"),
+            exclude_user_id=user_id,
+        )
+        if owner:
+            raise HTTPException(status_code=409, detail="이미 등록된 계정이 있습니다.")
         root = ensure_user_root(state.config.data_root, user_id)
         save_user_telegram(
             root,
@@ -668,6 +678,31 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     async def auth_logout(request: Request) -> JSONResponse:
         state.sessions.clear(request.cookies.get(COOKIE_USER))
         response = JSONResponse({"ok": True})
+        _clear_cookie(response, COOKIE_USER)
+        return response
+
+    @app.post("/api/auth/withdraw")
+    async def auth_withdraw(request: Request) -> JSONResponse:
+        user_id, account = require_account(request)
+        target = str(user_id)
+        state.reload()
+        if not state.accounts.get(target):
+            raise HTTPException(status_code=404, detail="계정을 찾을 수 없습니다.")
+        if not state.accounts.delete(target):
+            raise HTTPException(status_code=404, detail="계정을 찾을 수 없습니다.")
+        state.sessions.clear_user(target)
+        state.sessions.clear(request.cookies.get(COOKIE_USER))
+        with state.runtimes_lock:
+            state.runtimes.pop(target, None)
+        state.clear_login(target)
+        delete_user_data(state.config.data_root, target)
+        response = JSONResponse(
+            {
+                "ok": True,
+                "id": target,
+                "username": account.get("username"),
+            }
+        )
         _clear_cookie(response, COOKIE_USER)
         return response
 
@@ -900,12 +935,22 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         phone = body.phone.strip()
         if not phone:
             raise HTTPException(status_code=400, detail="전화번호를 입력하세요.")
+        owner = find_telegram_link_owner(
+            state.config.data_root,
+            state.config.telegram.session_name,
+            phone=phone,
+            exclude_user_id=user_id,
+        )
+        if owner:
+            raise HTTPException(status_code=409, detail="이미 등록된 계정이 있습니다.")
         save_user_telegram(ensure_user_root(state.config.data_root, user_id), {"phone": phone})
         cfg = user_config(state.config, user_id)
         login = state.login_for(user_id)
         try:
             result = await start_login(cfg, phone, login)
             return await finalize_telegram_link(user_id, result)
+        except HTTPException:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
@@ -925,6 +970,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         try:
             result = await submit_code(cfg, body.code, login)
             return await finalize_telegram_link(user_id, result)
+        except HTTPException:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
@@ -944,6 +991,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         try:
             result = await submit_password(cfg, body.password, login)
             return await finalize_telegram_link(user_id, result)
+        except HTTPException:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:

@@ -194,22 +194,52 @@ body.login-mode .app-shell {
   line-height: 1;
 }
 
-.phone-country-menu {
+.phone-country-menu-wrap {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
   z-index: 30;
   min-width: 220px;
   max-height: 240px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(15, 27, 45, 0.14);
+}
+
+.phone-country-menu-wrap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.phone-country-menu-wrap.has-more::after {
+  opacity: 1;
+}
+
+.phone-country-menu {
+  max-height: 240px;
   margin: 0;
   padding: 6px;
   list-style: none;
   overflow-x: hidden;
   overflow-y: auto;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 12px 28px rgba(15, 27, 45, 0.14);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.phone-country-menu::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .phone-country-option {
@@ -784,6 +814,35 @@ body:not(.login-mode) .login-screen {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 9.5em;
+}
+
+.account-tip-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin: 6px 0 0;
+  padding: 8px 0 2px;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: #fecaca;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.account-tip-action:hover {
+  color: #fee2e2;
+}
+
+.account-tip-action .material-symbols-outlined {
+  font-size: 16px;
+  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 20;
+  line-height: 1;
 }
 
 .logout-btn {
@@ -2439,6 +2498,28 @@ button[type="submit"]:disabled,
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 14rem;
+}
+
+.tz-flag {
+  width: 20px;
+  height: 15px;
+  object-fit: cover;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(15, 27, 45, 0.12);
+  flex: 0 0 auto;
+}
+
+.tz-flag-fallback {
+  font-size: 18px;
+  color: var(--muted);
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.tz-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .settings-menu-item-label {

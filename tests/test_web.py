@@ -76,8 +76,30 @@ def test_home_has_account_login(tmp_path: Path) -> None:
     assert "api-id-input" not in home.text
     assert "password-confirm-input" in home.text
     assert "login-phone-input" in home.text
+    assert 'id="account-withdraw"' in home.text
     assert 'data-view="accounts"' in home.text
     assert 'id="view-accounts"' in home.text
+
+
+def test_auth_withdraw_deletes_own_account(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
+    _write_env(tmp_path / ".env")
+    app = create_app(config_path)
+    client = TestClient(app)
+    data = _register(client, "leavers")
+    user_id = data["user"]["id"]
+    root = user_root(app.state.dashboard.config.data_root, user_id)
+    assert root.exists()
+    assert client.put("/api/journals/2026-04-01", json={"markdown": "# bye"}).status_code == 403
+    _link_session(app.state.dashboard, user_id)
+    assert client.put("/api/journals/2026-04-01", json={"markdown": "# bye"}).status_code == 200
+
+    withdrawn = client.post("/api/auth/withdraw", json={})
+    assert withdrawn.status_code == 200
+    assert withdrawn.json()["ok"] is True
+    assert not root.exists()
+    assert client.get("/api/overview").json()["authenticated"] is False
+    assert client.post("/api/auth/login", json={"username": "leavers", "password": "password1"}).status_code == 400
 
 
 def test_register_login_and_telegram_required(tmp_path: Path) -> None:
@@ -148,6 +170,30 @@ def test_telegram_link_start_phone_only(tmp_path: Path) -> None:
         response = client.post("/api/telegram/login/start", json={"phone": "+821011122233"})
     assert response.status_code == 200
     assert response.json()["stage"] == "code"
+
+
+def test_telegram_link_rejects_phone_already_linked(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
+    _write_env(tmp_path / ".env")
+    app = create_app(config_path)
+    first = TestClient(app)
+    second = TestClient(app)
+    a = _register(first, "owner_a")
+    _register(second, "owner_b")
+    _link_session(app.state.dashboard, a["user"]["id"])
+    from worklog_agent.users import save_user_telegram, user_root
+
+    save_user_telegram(
+        user_root(app.state.dashboard.config.data_root, a["user"]["id"]),
+        {"phone": "+821011122233", "telegram_user_id": 12345},
+    )
+    with patch(
+        "worklog_agent.web.app.start_login",
+        new=AsyncMock(return_value={"stage": "code", "message": "코드 전송"}),
+    ):
+        response = second.post("/api/telegram/login/start", json={"phone": "+82 10-1112-2233"})
+    assert response.status_code == 409
+    assert response.json()["detail"] == "이미 등록된 계정이 있습니다."
 
 
 def test_auth_logout_keeps_telegram_session(tmp_path: Path) -> None:

@@ -163,6 +163,43 @@ def load_user_telegram(root: Path) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def normalize_phone_digits(phone: str | None) -> str:
+    return "".join(ch for ch in str(phone or "") if ch.isdigit())
+
+
+def find_telegram_link_owner(
+    data_root: Path,
+    session_name: str = "worklog",
+    *,
+    phone: str | None = None,
+    telegram_user_id: int | str | None = None,
+    exclude_user_id: int | str | None = None,
+) -> str | None:
+    """Return another linked user's id if phone or telegram id is already taken."""
+    want_phone = normalize_phone_digits(phone)
+    want_tg = str(telegram_user_id).strip() if telegram_user_id not in (None, "") else ""
+    if not want_phone and not want_tg:
+        return None
+    exclude = str(exclude_user_id) if exclude_user_id is not None else ""
+    base = users_dir(data_root)
+    if not base.is_dir():
+        return None
+    for path in sorted(base.iterdir()):
+        if not path.is_dir():
+            continue
+        other_id = path.name
+        if exclude and other_id == exclude:
+            continue
+        if not telegram_linked(path, session_name):
+            continue
+        meta = load_user_telegram(path)
+        if want_phone and normalize_phone_digits(meta.get("phone")) == want_phone:
+            return other_id
+        if want_tg and str(meta.get("telegram_user_id") or "").strip() == want_tg:
+            return other_id
+    return None
+
+
 def save_user_telegram(root: Path, updates: dict[str, Any]) -> dict[str, Any]:
     current = load_user_telegram(root)
     for key, value in updates.items():
