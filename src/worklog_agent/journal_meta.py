@@ -27,6 +27,7 @@ def write_journal_meta(
     *,
     source_fingerprint: str,
     model: str | None = None,
+    generate_type: str | None = None,
 ) -> None:
     storage.journals.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -36,6 +37,8 @@ def write_journal_meta(
     }
     if model:
         payload["model"] = model
+    if generate_type:
+        payload["generate_type"] = generate_type
     journal_meta_path(storage, day).write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

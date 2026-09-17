@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -54,6 +55,15 @@ class Storage:
 
     def journal_path(self, day: str) -> Path:
         return self.journals / f"{day}.md"
+
+    def journal_rooms_dir(self, day: str) -> Path:
+        return self.journals / f"{day}.rooms"
+
+    def room_journal_path(self, day: str, chat_id: str | int) -> Path:
+        return self.journal_rooms_dir(day) / f"{chat_id}.md"
+
+    def room_journals_index_path(self, day: str) -> Path:
+        return self.journal_rooms_dir(day) / "index.json"
 
     def attachment_dir(self, day: str, chat_title: str) -> Path:
         path = self.attachments / day / slugify(chat_title, fallback="chat")
@@ -131,10 +141,63 @@ class Storage:
         path.write_text(markdown.rstrip() + "\n", encoding="utf-8")
         return path
 
+    def save_room_journal(self, day: str, chat_id: str | int, markdown: str) -> Path:
+        root = self.journal_rooms_dir(day)
+        root.mkdir(parents=True, exist_ok=True)
+        path = self.room_journal_path(day, chat_id)
+        path.write_text(markdown.rstrip() + "\n", encoding="utf-8")
+        return path
+
+    def write_room_journals_index(self, day: str, rooms: list[dict[str, str]]) -> Path:
+        root = self.journal_rooms_dir(day)
+        root.mkdir(parents=True, exist_ok=True)
+        path = self.room_journals_index_path(day)
+        path.write_text(
+            json.dumps({"rooms": rooms}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return path
+
     def list_journal_dates(self) -> list[str]:
         if not self.journals.exists():
             return []
-        return sorted((path.stem for path in self.journals.glob("*.md")), reverse=True)
+        dates: set[str] = set()
+        for path in self.journals.glob("*.md"):
+            dates.add(path.stem)
+        for path in self.journals.glob("*.rooms"):
+            if path.is_dir():
+                dates.add(path.name[: -len(".rooms")])
+        return sorted(dates, reverse=True)
+
+    def has_any_journal(self, day: str) -> bool:
+        if self.journal_path(day).exists():
+            return True
+        rooms = self.journal_rooms_dir(day)
+        if not rooms.is_dir():
+            return False
+        return any(path.suffix == ".md" and path.is_file() for path in rooms.iterdir())
+
+    def list_room_journals(self, day: str) -> list[dict[str, str]]:
+        root = self.journal_rooms_dir(day)
+        if not root.is_dir():
+            return []
+        titles: dict[str, str] = {}
+        index_path = self.room_journals_index_path(day)
+        if index_path.is_file():
+            try:
+                payload = json.loads(index_path.read_text(encoding="utf-8"))
+                for item in payload.get("rooms") or []:
+                    if isinstance(item, dict) and item.get("id") is not None:
+                        titles[str(item["id"])] = str(item.get("title") or item["id"])
+            except (json.JSONDecodeError, OSError, TypeError):
+                titles = {}
+        chat_titles = self.load_chat_titles()
+        rooms: list[dict[str, str]] = []
+        for path in sorted(root.glob("*.md"), key=lambda p: p.stem):
+            chat_id = path.stem
+            title = titles.get(chat_id) or chat_titles.get(chat_id) or chat_id
+            rooms.append({"id": chat_id, "title": title})
+        return rooms
 
     def read_journal(self, day: str) -> str:
         path = self.journal_path(day)
@@ -142,12 +205,28 @@ class Storage:
             raise FileNotFoundError(f"일지가 없습니다: {path}")
         return path.read_text(encoding="utf-8")
 
-    def delete_journal(self, day: str) -> bool:
-        path = self.journal_path(day)
+    def read_room_journal(self, day: str, chat_id: str | int) -> str:
+        path = self.room_journal_path(day, chat_id)
         if not path.exists():
+            raise FileNotFoundError(f"방 일지가 없습니다: {path}")
+        return path.read_text(encoding="utf-8")
+
+    def clear_room_journals(self, day: str) -> bool:
+        root = self.journal_rooms_dir(day)
+        if not root.exists():
             return False
-        path.unlink()
-        return True
+        shutil.rmtree(root, ignore_errors=True)
+        return not root.exists()
+
+    def delete_journal(self, day: str) -> bool:
+        removed = False
+        path = self.journal_path(day)
+        if path.exists():
+            path.unlink()
+            removed = True
+        if self.clear_room_journals(day):
+            removed = True
+        return removed
 
     def list_daily_dates(self) -> list[str]:
         if not self.daily.exists():

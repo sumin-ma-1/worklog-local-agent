@@ -4,15 +4,61 @@ import json
 
 from worklog_agent.config import AppConfig
 from worklog_agent.journal_prompt import default_system_prompt
-from worklog_agent.models import DailyBundle
+from worklog_agent.models import DailyBundle, DailyChat
 from worklog_agent.ollama import chat as ollama_chat
 
 JOURNAL_SYSTEM_PROMPT = default_system_prompt()
 
+GENERATE_TYPES = ("combined", "per_room", "both")
+GENERATE_TYPE_LABELS = {
+    "combined": "통합 한 번",
+    "per_room": "방마다",
+    "both": "통합 + 방마다",
+}
+
+
+def normalize_generate_type(value: str | None) -> str:
+    raw = str(value or "combined").strip().lower()
+    aliases = {
+        "통합": "combined",
+        "통합 한 번": "combined",
+        "all": "combined",
+        "combined": "combined",
+        "방마다": "per_room",
+        "room": "per_room",
+        "rooms": "per_room",
+        "per_room": "per_room",
+        "per-room": "per_room",
+        "통합+방마다": "both",
+        "통합 + 방마다": "both",
+        "both": "both",
+        "all+rooms": "both",
+    }
+    normalized = aliases.get(raw, raw)
+    if normalized not in GENERATE_TYPES:
+        raise ValueError("생성 유형은 통합 한 번, 방마다, 통합 + 방마다 중 하나여야 합니다.")
+    return normalized
+
+
+def bundle_for_chat(bundle: DailyBundle, chat: DailyChat) -> DailyBundle:
+    return DailyBundle(
+        date=bundle.date,
+        timezone=bundle.timezone,
+        chats=[chat],
+        totals={
+            "chats": 1,
+            "messages": chat.message_count,
+            "attachments": len(chat.attachments),
+        },
+    )
+
 
 def render_draft(bundle: DailyBundle) -> str:
+    room_suffix = ""
+    if len(bundle.chats) == 1:
+        room_suffix = f" · {bundle.chats[0].title}"
     lines = [
-        f"# 업무 일지 ({bundle.date})",
+        f"# 업무 일지 ({bundle.date}){room_suffix}",
         "",
         "## 요약",
         (
@@ -31,7 +77,8 @@ def render_draft(bundle: DailyBundle) -> str:
         return "\n".join(lines)
 
     for chat in bundle.chats:
-        lines.append(f"### {chat.title}")
+        if len(bundle.chats) > 1:
+            lines.append(f"### {chat.title}")
         for msg in chat.messages:
             time = msg.date.strftime("%H:%M")
             sender = msg.sender_name or "-"
@@ -65,15 +112,27 @@ async def generate_journal(
     config: AppConfig,
     *,
     model: str | None = None,
+    scope: str = "combined",
 ) -> str:
     from worklog_agent.journal_prompt import resolve_system_prompt
 
     payload = bundle.to_prompt_payload()
-    user_prompt = (
-        f"날짜: {bundle.date} ({bundle.timezone})\n"
-        "아래 JSON은 하루치 업무 채팅입니다. 한국어 업무 일지로 정리하세요.\n\n"
-        f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
-    )
+    if scope == "room" and len(bundle.chats) == 1:
+        title = bundle.chats[0].title
+        user_prompt = (
+            f"날짜: {bundle.date} ({bundle.timezone})\n"
+            f"채팅방: {title}\n"
+            "아래 JSON은 해당 채팅방의 하루치 업무 채팅입니다. "
+            "이 방만의 한국어 업무 일지로 정리하세요. "
+            "다른 방은 없다고 가정하세요.\n\n"
+            f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+        )
+    else:
+        user_prompt = (
+            f"날짜: {bundle.date} ({bundle.timezone})\n"
+            "아래 JSON은 하루치 업무 채팅입니다. 한국어 업무 일지로 정리하세요.\n\n"
+            f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+        )
     system = resolve_system_prompt(config.data_root, bundle.date)
     content = await ollama_chat(config, system, user_prompt, model=model)
     return content.strip() + "\n"

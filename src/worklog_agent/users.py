@@ -284,14 +284,31 @@ def _copy_day_attachments(storage: Any, day: str, files_root: Path) -> list[dict
     return copied
 
 
+def _day_share_markdown(storage: Any, day: str) -> tuple[bool, str]:
+    has_any = storage.has_any_journal(day) if hasattr(storage, "has_any_journal") else storage.journal_path(day).exists()
+    if storage.journal_path(day).exists():
+        return True, storage.read_journal(day)
+    rooms = storage.list_room_journals(day) if hasattr(storage, "list_room_journals") else []
+    chunks: list[str] = []
+    for room in rooms:
+        try:
+            text = storage.read_room_journal(day, room["id"]).strip()
+        except FileNotFoundError:
+            continue
+        if text:
+            chunks.append(f"# {room['title']}\n\n{text}")
+    if chunks:
+        return True, "\n\n".join(chunks) + "\n"
+    return has_any, ""
+
+
 def build_day_share_snapshot(storage: Any, day: str, token: str) -> dict[str, Any]:
     snap_root = share_snapshot_dir(storage.root, token)
     if snap_root.exists():
         shutil.rmtree(snap_root, ignore_errors=True)
     files_root = snap_root / "files"
     files_root.mkdir(parents=True, exist_ok=True)
-    has_journal = storage.journal_path(day).exists()
-    markdown = storage.read_journal(day) if has_journal else ""
+    has_journal, markdown = _day_share_markdown(storage, day)
     attachments = _copy_day_attachments(storage, day, files_root)
     return {
         "date": day,
@@ -347,8 +364,7 @@ def create_library_share_token(root: Path, *, mode: str = "live") -> dict[str, A
         files_root.mkdir(parents=True, exist_ok=True)
         packed = []
         for day in dates:
-            has_journal = storage.journal_path(day).exists()
-            markdown = storage.read_journal(day) if has_journal else ""
+            has_journal, markdown = _day_share_markdown(storage, day)
             attachments = _copy_day_attachments(storage, day, files_root)
             packed.append(
                 {

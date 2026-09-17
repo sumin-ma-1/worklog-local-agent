@@ -73,7 +73,7 @@ def plan_run_days(
 ) -> list[dict]:
     items: list[dict] = []
     for day in dates:
-        has_journal = storage.journal_path(day).exists()
+        has_journal = storage.has_any_journal(day)
         has_daily = storage.daily_path(day).exists()
         has_source = day_has_source(storage, day)
         meta = read_journal_meta(storage, day) if has_journal else None

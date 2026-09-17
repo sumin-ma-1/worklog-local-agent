@@ -12,6 +12,7 @@ const state = {
   pendingRegistration: false,
   journals: [],
   journalSelected: null,
+  journalView: "all",
   calendarMonth: null,
   explorerOpen: {},
   accounts: [],
@@ -1320,6 +1321,10 @@ function renderJournalDetail(data, { editing = false } = {}) {
   const attach = renderAttachmentItems(data.attachments);
   const markdown = data.markdown || "";
   const hasJournal = Boolean(data.has_journal || markdown);
+  const views = Array.isArray(data.views) ? data.views : [];
+  const selectedView = data.view || state.journalView || "all";
+  state.journalView = selectedView;
+  const showViewNav = views.some((item) => item.kind === "room");
   const body = editing
     ? `<div class="journal-editor-wrap" id="journal-editor-wrap">
         <textarea id="journal-editor" class="journal-editor" spellcheck="false">${escapeHtml(markdown)}</textarea>
@@ -1355,24 +1360,49 @@ function renderJournalDetail(data, { editing = false } = {}) {
         <span class="material-symbols-outlined" aria-hidden="true">delete</span>
       </button>
     `;
+  const viewNav = showViewNav
+    ? `<nav class="journal-view-nav" aria-label="일지 보기">
+        ${views
+          .map((item) => {
+            const active = item.id === selectedView;
+            return `<button type="button" class="journal-view-btn${active ? " is-active" : ""}" data-journal-view="${escapeHtml(item.id)}" aria-pressed="${active ? "true" : "false"}">
+              <span class="journal-view-label">${escapeHtml(item.label)}</span>
+            </button>`;
+          })
+          .join("")}
+      </nav>`
+    : "";
   $("#journal-detail").innerHTML = `
-    <div class="row-head">
-      <h3>${escapeHtml(formatJournalDayTitle(data.date))}</h3>
-      <div class="journal-actions">${actions}</div>
-    </div>
-    ${body}
-    <div class="journal-attach">
-      <h3>첨부</h3>
-      <ul class="attach-list">${attach || `<li class="empty">첨부 없음</li>`}</ul>
+    <div class="journal-detail-layout${showViewNav ? " has-view-nav" : ""}">
+      ${viewNav}
+      <div class="journal-detail-main">
+        <div class="row-head">
+          <h3>${escapeHtml(formatJournalDayTitle(data.date))}</h3>
+          <div class="journal-actions">${actions}</div>
+        </div>
+        ${body}
+        <div class="journal-attach">
+          <h3>첨부</h3>
+          <ul class="attach-list">${attach || `<li class="empty">첨부 없음</li>`}</ul>
+        </div>
+      </div>
     </div>
   `;
 
   $("#journal-detail-scroll")?.addEventListener("scroll", updateJournalScrollFade, { passive: true });
   $("#journal-editor")?.addEventListener("scroll", updateJournalScrollFade, { passive: true });
 
+  $("#journal-detail")?.querySelectorAll("[data-journal-view]")?.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = btn.getAttribute("data-journal-view");
+      if (!next || next === state.journalView) return;
+      loadJournal(data.date, next).catch((err) => showBanner(err.message, "error"));
+    });
+  });
+
   if (editing) {
-    $("#journal-save")?.addEventListener("click", () => saveJournal(data.date));
-    $("#journal-cancel")?.addEventListener("click", () => loadJournal(data.date));
+    $("#journal-save")?.addEventListener("click", () => saveJournal(data.date, selectedView));
+    $("#journal-cancel")?.addEventListener("click", () => loadJournal(data.date, selectedView));
     $("#journal-editor")?.addEventListener("input", updateJournalScrollFade);
     $("#journal-editor")?.focus();
     scheduleJournalScrollFade();
@@ -1477,26 +1507,31 @@ async function shareJournalLibrary() {
   }
 }
 
-async function loadJournal(day) {
+async function loadJournal(day, view = null) {
+  const dayChanged = state.journalSelected !== day;
   state.journalSelected = day;
+  if (view != null) state.journalView = view;
+  else if (dayChanged) state.journalView = "all";
   const parsed = parseDay(day);
   if (parsed) state.calendarMonth = { y: parsed.y, m: parsed.m };
   ensureExplorerPathForDay(day);
   renderJournalBrowse();
-  const data = await api(`/api/journals/${day}`);
+  const q = `?view=${encodeURIComponent(state.journalView || "all")}`;
+  const data = await api(`/api/journals/${day}${q}`);
   renderJournalDetail(data);
 }
 
-async function saveJournal(day) {
+async function saveJournal(day, view = "all") {
   const editor = $("#journal-editor");
   if (!editor) return;
   try {
     await api(`/api/journals/${day}`, {
       method: "PUT",
-      body: JSON.stringify({ markdown: editor.value }),
+      body: JSON.stringify({ markdown: editor.value, view }),
     });
     showBanner(`${day} 일지를 저장했습니다.`, "ok");
     await loadJournals(day);
+    await loadJournal(day, view);
     await loadOverview();
   } catch (err) {
     showBanner(err.message, "error");
@@ -2143,6 +2178,12 @@ const RUN_POLICY_LABEL = {
   force: "무조건 재생성",
 };
 
+const RUN_GENERATE_TYPE_LABEL = {
+  combined: "통합 한 번",
+  per_room: "방마다",
+  both: "통합 + 방마다",
+};
+
 const SCHEDULE_TARGET_LABEL = {
   yesterday: "어제",
   today: "오늘",
@@ -2186,6 +2227,25 @@ function selectRunPolicy(policy) {
   input.checked = true;
   syncRunPolicySummary();
   hideRunPlan();
+  closeSettingsMenus();
+}
+
+function selectedGenerateType() {
+  return $("#run-generate-type")?.value || "combined";
+}
+
+function syncRunGenerateTypeSummary() {
+  const summary = $("#run-generate-type-summary");
+  const value = selectedGenerateType();
+  if (summary) summary.textContent = RUN_GENERATE_TYPE_LABEL[value] || RUN_GENERATE_TYPE_LABEL.combined;
+  syncMenuSelection("#run-generate-type-menu", value, "generateType");
+}
+
+function selectRunGenerateType(value) {
+  const input = $("#run-generate-type");
+  if (!input || !RUN_GENERATE_TYPE_LABEL[value]) return;
+  input.value = value;
+  syncRunGenerateTypeSummary();
   closeSettingsMenus();
 }
 
@@ -2286,6 +2346,7 @@ function runOptionsBody() {
     skip_existing: policy === "skip",
     regenerate_if_stale: policy === "stale",
     force: policy === "force",
+    generate_type: selectedGenerateType(),
   };
 }
 
@@ -3314,6 +3375,20 @@ $("#run-policy-menu")?.addEventListener("click", (event) => {
   selectRunPolicy(choice.dataset.policy);
 });
 
+$("#run-generate-type-toggle")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const toggle = $("#run-generate-type-toggle");
+  const menu = $("#run-generate-type-menu");
+  const open = toggle?.getAttribute("aria-expanded") === "true";
+  setSettingsMenuOpen(toggle, menu, !open);
+});
+
+$("#run-generate-type-menu")?.addEventListener("click", (event) => {
+  const choice = event.target.closest(".settings-menu-item");
+  if (!choice?.dataset.generateType) return;
+  selectRunGenerateType(choice.dataset.generateType);
+});
+
 $("#schedule-target-toggle")?.addEventListener("click", (event) => {
   event.stopPropagation();
   const toggle = $("#schedule-target-toggle");
@@ -3355,6 +3430,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 syncRunPolicySummary();
+syncRunGenerateTypeSummary();
 syncScheduleTargetSummary();
 syncSchedulePolicySummary();
 syncRunPreferenceSummaries();

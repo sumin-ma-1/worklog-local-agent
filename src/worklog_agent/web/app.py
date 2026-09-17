@@ -139,6 +139,7 @@ class ChatBody(BaseModel):
 
 class JournalBody(BaseModel):
     markdown: str
+    view: str | None = None
 
 
 class RunBody(BaseModel):
@@ -149,6 +150,7 @@ class RunBody(BaseModel):
     skip_existing: bool = False
     regenerate_if_stale: bool = False
     force: bool = False
+    generate_type: str = "combined"
 
 
 class ScheduleBody(BaseModel):
@@ -338,18 +340,47 @@ def _watched_chats(cfg: AppConfig) -> list[dict[str, object]]:
     return rows
 
 
-def _journal_payload(storage: Storage, day: str) -> dict:
+def _journal_payload(storage: Storage, day: str, *, view: str | None = None) -> dict:
+    rooms = storage.list_room_journals(day)
+    has_combined = storage.journal_path(day).exists()
+    has_journal = has_combined or bool(rooms)
+    views: list[dict[str, str]] = []
+    if has_combined:
+        views.append({"id": "all", "label": "전체", "kind": "combined"})
+    for room in rooms:
+        views.append({"id": room["id"], "label": room["title"], "kind": "room"})
+
+    selected = str(view or "").strip()
+    if not selected:
+        selected = views[0]["id"] if views else "all"
+    valid_ids = {item["id"] for item in views}
+    if selected not in valid_ids:
+        if selected == "all" and not has_combined and rooms:
+            selected = rooms[0]["id"]
+        elif views:
+            selected = views[0]["id"]
+        else:
+            selected = "all"
+
     markdown = ""
-    daily = None
-    has_journal = storage.journal_path(day).exists()
-    if has_journal:
+    if selected == "all" and has_combined:
         markdown = storage.read_journal(day)
+    elif selected != "all":
+        try:
+            markdown = storage.read_room_journal(day, selected)
+        except FileNotFoundError:
+            markdown = ""
+
+    daily = None
     if storage.daily_path(day).exists():
         daily = storage.load_daily(day).model_dump(mode="json")
     return {
         "date": day,
         "markdown": markdown,
         "has_journal": has_journal,
+        "has_combined": has_combined,
+        "view": selected,
+        "views": views,
         "daily": daily,
         "attachments": storage.list_attachments(day),
         "updated_at": _day_updated_at_iso(storage, day),
@@ -1092,10 +1123,13 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         items = []
         for day in dates:
             share = share_for_day(cfg.data_root, day)
+            rooms = storage.list_room_journals(day)
             items.append(
                 {
                     "date": day,
-                    "has_journal": storage.journal_path(day).exists(),
+                    "has_journal": storage.has_any_journal(day),
+                    "has_combined": storage.journal_path(day).exists(),
+                    "room_count": len(rooms),
                     "has_daily": storage.daily_path(day).exists(),
                     "attachments": len(storage.list_attachments(day)),
                     "share_token": share["token"] if share else None,
@@ -1104,10 +1138,14 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         return {"journals": items}
 
     @app.get("/api/journals/{day}")
-    async def journal_detail(request: Request, day: str) -> dict:
+    async def journal_detail(
+        request: Request,
+        day: str,
+        view: str | None = Query(default=None),
+    ) -> dict:
         _, cfg = require_telegram(request)
         day = _require_day(day)
-        payload = _journal_payload(Storage(cfg.data_root), day)
+        payload = _journal_payload(Storage(cfg.data_root), day, view=view)
         share = share_for_day(cfg.data_root, day)
         payload["share_token"] = share["token"] if share else None
         payload["share_url"] = f"/s/{share['token']}" if share else None
@@ -1118,14 +1156,14 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         _, cfg = require_telegram(request)
         day = _require_day(day)
         storage = Storage(cfg.data_root)
-        path = storage.save_journal(day, body.markdown)
-        return {
-            "date": day,
-            "markdown": storage.read_journal(day),
-            "has_journal": True,
-            "path": str(path),
-            "attachments": storage.list_attachments(day),
-        }
+        selected = str(body.view or "all").strip() or "all"
+        if selected == "all":
+            path = storage.save_journal(day, body.markdown)
+        else:
+            path = storage.save_room_journal(day, selected, body.markdown)
+        payload = _journal_payload(storage, day, view=selected)
+        payload["path"] = str(path)
+        return payload
 
     @app.delete("/api/journals/{day}")
     async def delete_journal(request: Request, day: str) -> dict:
@@ -1144,7 +1182,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         day = _require_day(day)
         mode = normalize_share_mode((body.mode if body else None))
         storage = Storage(cfg.data_root)
-        if not storage.journal_path(day).exists() and not storage.daily_path(day).exists():
+        if not storage.has_any_journal(day) and not storage.daily_path(day).exists():
             raise HTTPException(status_code=404, detail="공유할 일지가 없습니다.")
         meta = create_share_token(cfg.data_root, day, mode=mode)
         return {
@@ -1185,10 +1223,21 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
         snippets: list[str] = []
         for day in dates[:40]:
-            text = (storage.read_journal(day) or "").strip()
-            if not text:
+            chunks: list[str] = []
+            if storage.journal_path(day).exists():
+                text = (storage.read_journal(day) or "").strip()
+                if text:
+                    chunks.append(text[:1200])
+            for room in storage.list_room_journals(day)[:8]:
+                try:
+                    text = (storage.read_room_journal(day, room["id"]) or "").strip()
+                except FileNotFoundError:
+                    continue
+                if text:
+                    chunks.append(f"[{room['title']}]\n{text[:800]}")
+            if not chunks:
                 continue
-            snippets.append(f"## {day}\n{text[:1200]}")
+            snippets.append(f"## {day}\n" + "\n\n".join(chunks))
         if not snippets:
             return {
                 "answer": "아직 검색할 일지가 없습니다. 먼저 일지를 생성해 주세요.",
@@ -1268,7 +1317,14 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     async def run_pipeline(request: Request, body: RunBody) -> dict:
         user_id, cfg = require_telegram(request)
         runtime = state.runtime_for(user_id)
+        from worklog_agent.journal import normalize_generate_type
+
+        try:
+            generate_type = normalize_generate_type(body.generate_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         payload = body.model_dump()
+        payload["generate_type"] = generate_type
         try:
             dates = resolve_run_dates(
                 date=body.date,

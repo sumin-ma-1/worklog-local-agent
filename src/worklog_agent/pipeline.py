@@ -7,7 +7,7 @@ from collections.abc import Callable
 from worklog_agent.archive import archive_pending
 from worklog_agent.collect import collect_all
 from worklog_agent.config import AppConfig
-from worklog_agent.journal import generate_journal
+from worklog_agent.journal import bundle_for_chat, generate_journal, normalize_generate_type
 from worklog_agent.ollama import (
     _model_already_loaded,
     list_running_model_names,
@@ -69,9 +69,11 @@ class Pipeline:
         self,
         day: str | None = None,
         *,
+        generate_type: str = "combined",
         on_progress: ProgressFn | None = None,
     ) -> str:
         resolved = target_day(day, self.config.timezone)
+        kind = normalize_generate_type(generate_type)
         await emit_progress(on_progress, f"{resolved} · 날짜별 정리 중", "organize")
         bundle = self.organize(resolved)
         model_name = self.config.journal.ollama.model
@@ -81,9 +83,42 @@ class Pipeline:
         else:
             await emit_progress(on_progress, f"모델 로드 중: {model_name}", "model")
         model = await warmup_model(self.config)
-        await emit_progress(on_progress, f"{resolved} · 일지 생성 중 ({model})", "journal")
-        markdown = await generate_journal(bundle, self.config, model=model)
-        path = self.storage.save_journal(resolved, markdown)
+
+        want_combined = kind in {"combined", "both"}
+        want_rooms = kind in {"per_room", "both"}
+        primary_path: str | None = None
+
+        if want_combined:
+            await emit_progress(on_progress, f"{resolved} · 통합 일지 생성 중 ({model})", "journal")
+            markdown = await generate_journal(bundle, self.config, model=model, scope="combined")
+            primary_path = str(self.storage.save_journal(resolved, markdown))
+        else:
+            # 방마다만 생성하면 이전 통합본은 제거해 열람 목록을 맞춘다.
+            if self.storage.journal_path(resolved).exists():
+                self.storage.journal_path(resolved).unlink()
+
+        if want_rooms:
+            self.storage.clear_room_journals(resolved)
+            rooms_meta: list[dict[str, str]] = []
+            total_rooms = len(bundle.chats) or 1
+            for index, chat in enumerate(bundle.chats, start=1):
+                await emit_progress(
+                    on_progress,
+                    f"{resolved} · 방 일지 {index}/{total_rooms}: {chat.title} ({model})",
+                    "journal",
+                )
+                room_bundle = bundle_for_chat(bundle, chat)
+                room_md = await generate_journal(
+                    room_bundle, self.config, model=model, scope="room"
+                )
+                path = self.storage.save_room_journal(resolved, chat.chat_id, room_md)
+                rooms_meta.append({"id": str(chat.chat_id), "title": chat.title})
+                if primary_path is None:
+                    primary_path = str(path)
+            self.storage.write_room_journals_index(resolved, rooms_meta)
+        else:
+            self.storage.clear_room_journals(resolved)
+
         write_journal_meta(
             self.storage,
             resolved,
@@ -93,14 +128,20 @@ class Pipeline:
                 self.config.timezone,
             ),
             model=model,
+            generate_type=kind,
         )
-        logger.info("일지 저장: %s", path)
-        return str(path)
+        if primary_path is None:
+            # 방이 없는 날: 빈 통합 초안이라도 남긴다.
+            empty = await generate_journal(bundle, self.config, model=model, scope="combined")
+            primary_path = str(self.storage.save_journal(resolved, empty))
+        logger.info("일지 저장: %s", primary_path)
+        return primary_path
 
     async def run(
         self,
         day: str | None = None,
         *,
+        generate_type: str = "combined",
         on_progress: ProgressFn | None = None,
     ) -> str:
         resolved = target_day(day, self.config.timezone)
@@ -108,6 +149,8 @@ class Pipeline:
         collected = await self.collect(resolved, on_progress=on_progress)
         await emit_progress(on_progress, f"{resolved} · 첨부 저장 중", "archive")
         archived = await self.archive(on_progress=on_progress)
-        path = await self.journal(resolved, on_progress=on_progress)
+        path = await self.journal(
+            resolved, generate_type=generate_type, on_progress=on_progress
+        )
         logger.info("파이프라인 완료: 수집 %s, 첨부 %s, 일지 %s", collected, archived, path)
         return path

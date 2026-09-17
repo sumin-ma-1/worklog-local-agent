@@ -108,6 +108,9 @@ def enqueue_planned_run(
 ) -> dict:
     if runtime_is_busy(runtime):
         raise RunBusyError("이미 실행 중입니다.")
+    from worklog_agent.journal import normalize_generate_type
+
+    generate_type = normalize_generate_type(body.get("generate_type"))
     plan = build_plan(cfg, body)
     queue = dates_to_run(plan)
     if not queue:
@@ -125,7 +128,7 @@ def enqueue_planned_run(
     )
     worker = threading.Thread(
         target=_run_pipeline_thread,
-        args=(cfg, runtime, plan),
+        args=(cfg, runtime, plan, generate_type),
         daemon=True,
         name=f"worklog-pipeline-{user_id}",
     )
@@ -136,9 +139,14 @@ def enqueue_planned_run(
     return snapshot
 
 
-def _run_pipeline_thread(cfg: AppConfig, runtime: UserRuntime, plan: list[dict]) -> None:
+def _run_pipeline_thread(
+    cfg: AppConfig,
+    runtime: UserRuntime,
+    plan: list[dict],
+    generate_type: str = "combined",
+) -> None:
     try:
-        asyncio.run(_run_pipeline_queue(cfg, runtime, plan))
+        asyncio.run(_run_pipeline_queue(cfg, runtime, plan, generate_type))
     except Exception as exc:
         logger.exception("대시보드 파이프라인 스레드 실패")
         runtime.set_job(
@@ -148,7 +156,12 @@ def _run_pipeline_thread(cfg: AppConfig, runtime: UserRuntime, plan: list[dict])
         )
 
 
-async def _run_pipeline_queue(cfg: AppConfig, runtime: UserRuntime, plan: list[dict]) -> None:
+async def _run_pipeline_queue(
+    cfg: AppConfig,
+    runtime: UserRuntime,
+    plan: list[dict],
+    generate_type: str = "combined",
+) -> None:
     results: list[dict] = []
     total = len(plan)
     plan_dates = [item["date"] for item in plan]
@@ -190,7 +203,11 @@ async def _run_pipeline_queue(cfg: AppConfig, runtime: UserRuntime, plan: list[d
             )
 
         try:
-            path = await Pipeline(cfg).run(day, on_progress=progress)
+            path = await Pipeline(cfg).run(
+                day,
+                generate_type=generate_type,
+                on_progress=progress,
+            )
             last_path = path
             results.append({"date": day, "status": "done", "path": path})
         except Exception as exc:
