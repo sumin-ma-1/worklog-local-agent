@@ -1174,6 +1174,22 @@ async function shareJournal(day) {
   }
 }
 
+async function shareJournalLibrary() {
+  try {
+    const data = await api("/api/journals/share-library", { method: "POST", body: "{}" });
+    const url = `${window.location.origin}${data.url}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      showBanner(`전체 일지 공유 링크를 복사했습니다. (${data.count || 0}일)`, "ok");
+    } else {
+      window.prompt("전체 일지 공유 링크", url);
+      showBanner("전체 일지 공유 링크를 만들었습니다.", "ok");
+    }
+  } catch (err) {
+    showBanner(err.message, "error");
+  }
+}
+
 async function loadJournal(day) {
   state.journalSelected = day;
   const parsed = parseDay(day);
@@ -1387,12 +1403,7 @@ function initJournalDock() {
       return;
     }
     if (action === "share") {
-      const day = state.journalSelected;
-      if (!day) {
-        showBanner("공유할 일지를 먼저 선택하세요.", "error");
-        return;
-      }
-      await shareJournal(day);
+      await shareJournalLibrary();
       return;
     }
     if (action === "chat") {

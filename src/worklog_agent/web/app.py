@@ -48,10 +48,12 @@ from worklog_agent.telegram_auth import (
 )
 from worklog_agent.users import (
     add_user_chat,
+    create_library_share_token,
     create_share_token,
     delete_user_data,
     ensure_user_root,
     find_share,
+    library_share_for,
     load_user_chats,
     load_user_preferences,
     load_user_telegram,
@@ -385,6 +387,29 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         if not found:
             raise HTTPException(status_code=404, detail="공유 링크가 없거나 만료되었습니다.")
         user_dir, meta = found
+        if meta.get("scope") == "library":
+            storage = Storage(user_dir)
+            dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
+            items = []
+            for day in dates:
+                payload = _journal_payload(storage, day)
+                items.append(
+                    {
+                        "date": day,
+                        "has_journal": payload["has_journal"],
+                        "attachments": len(payload["attachments"]),
+                    }
+                )
+            return templates.TemplateResponse(
+                request,
+                "share_library.html",
+                {
+                    "token": token,
+                    "token_json": json.dumps(token),
+                    "journals": items,
+                    "journals_json": json.dumps(items, ensure_ascii=False),
+                },
+            )
         day = str(meta.get("day") or "")
         if not _DAY_RE.fullmatch(day):
             raise HTTPException(status_code=404, detail="공유 링크가 올바르지 않습니다.")
@@ -412,14 +437,40 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         )
 
     @app.get("/api/share/{token}")
-    async def share_api(token: str) -> dict:
+    async def share_api(token: str, day: str | None = None) -> dict:
         state.reload()
         found = find_share(state.config.data_root, token)
         if not found:
             raise HTTPException(status_code=404, detail="공유 링크가 없거나 만료되었습니다.")
         user_dir, meta = found
+        storage = Storage(user_dir)
+        if meta.get("scope") == "library":
+            if day:
+                day = _require_day(day)
+                payload = _journal_payload(storage, day)
+                payload["attachments"] = [
+                    {
+                        **file,
+                        "href": f"/api/share/{token}/file?path={quote(str(file.get('relative') or ''), safe='')}",
+                        "icon": file_icon_src(str(file.get("name") or "")),
+                    }
+                    for file in payload["attachments"]
+                ]
+                return payload
+            dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
+            journals = []
+            for item_day in dates:
+                payload = _journal_payload(storage, item_day)
+                journals.append(
+                    {
+                        "date": item_day,
+                        "has_journal": payload["has_journal"],
+                        "attachments": len(payload["attachments"]),
+                    }
+                )
+            return {"scope": "library", "journals": journals}
         day = _require_day(str(meta.get("day") or ""))
-        return _journal_payload(Storage(user_dir), day)
+        return _journal_payload(storage, day)
 
     @app.get("/api/share/{token}/file")
     async def share_file(token: str, path: str = Query(..., min_length=1)) -> FileResponse:
@@ -428,10 +479,11 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         if not found:
             raise HTTPException(status_code=404, detail="공유 링크가 없거나 만료되었습니다.")
         user_dir, meta = found
-        day = str(meta.get("day") or "")
         rel = path.replace("\\", "/").lstrip("/")
-        if not rel.startswith(f"{day}/"):
-            raise HTTPException(status_code=400, detail="이 공유 링크에서 열 수 없는 파일입니다.")
+        if meta.get("scope") != "library":
+            day = str(meta.get("day") or "")
+            if not rel.startswith(f"{day}/"):
+                raise HTTPException(status_code=400, detail="이 공유 링크에서 열 수 없는 파일입니다.")
         try:
             file_path = Storage(user_dir).attachment_file(rel)
         except ValueError as exc:
@@ -885,6 +937,16 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="공유할 일지가 없습니다.")
         meta = create_share_token(cfg.data_root, day)
         return {"date": day, "token": meta["token"], "url": f"/s/{meta['token']}"}
+
+    @app.post("/api/journals/share-library")
+    async def share_journal_library(request: Request) -> dict:
+        _, cfg = require_telegram(request)
+        storage = Storage(cfg.data_root)
+        dates = set(storage.list_journal_dates()) | set(storage.list_daily_dates())
+        if not dates:
+            raise HTTPException(status_code=404, detail="공유할 일지가 없습니다.")
+        meta = create_library_share_token(cfg.data_root)
+        return {"scope": "library", "token": meta["token"], "url": f"/s/{meta['token']}", "count": len(dates)}
 
     @app.delete("/api/journals/{day}/share")
     async def unshare_journal(request: Request, day: str) -> dict:

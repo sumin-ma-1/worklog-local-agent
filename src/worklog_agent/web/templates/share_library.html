@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Worklog · 공유 일지</title>
+  <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
+  <link rel="stylesheet" href="/static/dashboard.css?v=library-share-1">
+</head>
+<body class="share-mode">
+  <main class="share-shell share-library-shell">
+    <header class="share-head">
+      <img class="brand-logo" src="/static/worklog.jpg" alt="Worklog" width="36" height="36">
+      <div>
+        <div class="share-brand">Worklog</div>
+        <h1>공유된 일지</h1>
+      </div>
+    </header>
+
+    <div class="share-library-layout">
+      <aside class="panel share-library-list-panel">
+        <h2 class="share-library-list-title">일지 목록</h2>
+        <ul id="share-journal-list" class="share-journal-list" aria-label="공유 일지 목록"></ul>
+      </aside>
+      <article class="panel share-panel share-library-detail" id="share-detail">
+        <div class="journal-placeholder">
+          <h3 class="journal-placeholder-title">일지를 선택하세요</h3>
+          <p class="journal-placeholder-hint">왼쪽 목록에서 날짜를 고르면 내용이 표시됩니다.</p>
+        </div>
+      </article>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+  <script>
+    const TOKEN = {{ token_json|safe }};
+    const JOURNALS = {{ journals_json|safe }};
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function formatDayTitle(day) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || ""));
+      if (!match) return day;
+      const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+      return `${match[1]}년 ${Number(match[2])}월 ${Number(match[3])}일 ${weekdays[date.getDay()]}요일`;
+    }
+
+    function renderList() {
+      const list = document.getElementById("share-journal-list");
+      if (!list) return;
+      if (!JOURNALS.length) {
+        list.innerHTML = `<li class="empty">공유된 일지가 없습니다.</li>`;
+        return;
+      }
+      list.innerHTML = JOURNALS.map((item) => {
+        const meta = [];
+        if (item.has_journal) meta.push("일지");
+        if (item.attachments) meta.push(`첨부 ${item.attachments}`);
+        return `<li>
+          <button type="button" class="share-journal-item" data-day="${escapeHtml(item.date)}">
+            <strong>${escapeHtml(item.date)}</strong>
+            <span>${escapeHtml(meta.join(" · ") || "기록")}</span>
+          </button>
+        </li>`;
+      }).join("");
+    }
+
+    async function openDay(day) {
+      const detail = document.getElementById("share-detail");
+      if (!detail) return;
+      detail.innerHTML = `<p class="empty">불러오는 중…</p>`;
+      document.querySelectorAll(".share-journal-item").forEach((btn) => {
+        btn.classList.toggle("is-selected", btn.dataset.day === day);
+      });
+      try {
+        const response = await fetch(`/api/share/${encodeURIComponent(TOKEN)}?day=${encodeURIComponent(day)}`);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof data.detail === "string" ? data.detail : "일지를 불러오지 못했습니다.");
+        }
+        const markdown = data.markdown || "";
+        let bodyHtml = `<p class="empty">이 날짜의 일지가 없습니다.</p>`;
+        if (markdown) {
+          if (window.marked && typeof window.marked.parse === "function") {
+            bodyHtml = `<div class="journal-body markdown-body">${window.marked.parse(markdown)}</div>`;
+          } else {
+            bodyHtml = `<pre class="journal-body">${escapeHtml(markdown)}</pre>`;
+          }
+        }
+        const attachments = Array.isArray(data.attachments) ? data.attachments : [];
+        const attachHtml = attachments.length
+          ? attachments
+              .map(
+                (file) => `<li>
+                  <img class="attach-icon" src="${escapeHtml(file.icon || "")}" alt="" width="20" height="20">
+                  <a href="${escapeHtml(file.href || "#")}" target="_blank" rel="noreferrer">${escapeHtml(file.name || "")}</a>
+                </li>`
+              )
+              .join("")
+          : `<li class="empty">첨부 없음</li>`;
+        detail.innerHTML = `
+          <div class="row-head"><h3>${escapeHtml(formatDayTitle(day))}</h3></div>
+          ${bodyHtml}
+          <div class="journal-attach">
+            <h3>첨부</h3>
+            <ul class="attach-list">${attachHtml}</ul>
+          </div>
+        `;
+      } catch (err) {
+        detail.innerHTML = `<p class="empty">${escapeHtml(err.message || "오류")}</p>`;
+      }
+    }
+
+    renderList();
+    document.getElementById("share-journal-list")?.addEventListener("click", (event) => {
+      const btn = event.target.closest?.(".share-journal-item");
+      if (!btn?.dataset.day) return;
+      openDay(btn.dataset.day);
+    });
+    if (JOURNALS[0]?.date) openDay(JOURNALS[0].date);
+  </script>
+</body>
+</html>

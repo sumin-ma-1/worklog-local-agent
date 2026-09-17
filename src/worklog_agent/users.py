@@ -214,11 +214,33 @@ def create_share_token(root: Path, day: str) -> dict[str, Any]:
     token = secrets.token_urlsafe(24)
     meta = {
         "day": day,
+        "scope": "day",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     shares[token] = meta
     save_shares(root, shares)
     return {"token": token, **meta}
+
+
+def create_library_share_token(root: Path) -> dict[str, Any]:
+    shares = load_shares(root)
+    # One active library token: drop previous library tokens.
+    shares = {token: meta for token, meta in shares.items() if meta.get("scope") != "library"}
+    token = secrets.token_urlsafe(24)
+    meta = {
+        "scope": "library",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    shares[token] = meta
+    save_shares(root, shares)
+    return {"token": token, **meta}
+
+
+def library_share_for(root: Path) -> dict[str, Any] | None:
+    for token, meta in load_shares(root).items():
+        if meta.get("scope") == "library":
+            return {"token": token, **meta}
+    return None
 
 
 def revoke_share_for_day(root: Path, day: str) -> int:
