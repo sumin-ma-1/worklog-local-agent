@@ -771,8 +771,8 @@ main {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 18px;
+  gap: 4px;
+  padding: 6px 14px;
   border-radius: 999px;
   background: #fff;
   border: 1px solid rgba(15, 27, 45, 0.06);
@@ -782,8 +782,8 @@ main {
 }
 
 .journal-dock-btn {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -797,8 +797,8 @@ main {
 }
 
 .journal-dock-btn .material-symbols-outlined {
-  font-size: 22px;
-  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  font-size: 20px;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
   line-height: 1;
 }
 
@@ -820,7 +820,7 @@ main {
 .journal-chat-panel {
   position: absolute;
   left: 50%;
-  bottom: 78px;
+  bottom: 68px;
   transform: translateX(-50%);
   z-index: 36;
   width: min(420px, calc(100% - 24px));
