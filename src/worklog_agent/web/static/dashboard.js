@@ -1033,10 +1033,23 @@ async function loadJournals(selectDay) {
   }
 }
 
+function updateScrollFade(scroll, wrap) {
+  if (!scroll || !wrap) return;
+  const more = scroll.scrollTop + scroll.clientHeight < scroll.scrollHeight - 2;
+  wrap.classList.toggle("has-more", more);
+}
+
 function updateJournalScrollFade() {
   updateScrollFade($("#journal-list-scroll"), $("#journal-list-wrap"));
   updateScrollFade($("#journal-detail-scroll"), $("#journal-detail-wrap"));
   updateScrollFade($("#journal-editor"), $("#journal-editor-wrap"));
+}
+
+function scheduleJournalScrollFade() {
+  requestAnimationFrame(() => {
+    updateJournalScrollFade();
+    requestAnimationFrame(updateJournalScrollFade);
+  });
 }
 
 function renderJournalDetail(data, { editing = false } = {}) {
@@ -1098,7 +1111,7 @@ function renderJournalDetail(data, { editing = false } = {}) {
     $("#journal-cancel")?.addEventListener("click", () => loadJournal(data.date));
     $("#journal-editor")?.addEventListener("input", updateJournalScrollFade);
     $("#journal-editor")?.focus();
-    requestAnimationFrame(updateJournalScrollFade);
+    scheduleJournalScrollFade();
     return;
   }
   $("#journal-copy")?.addEventListener("click", () => copyJournal(data));
@@ -1106,7 +1119,7 @@ function renderJournalDetail(data, { editing = false } = {}) {
   $("#journal-share")?.addEventListener("click", () => shareJournal(data.date));
   $("#journal-edit")?.addEventListener("click", () => renderJournalDetail(data, { editing: true }));
   $("#journal-delete")?.addEventListener("click", () => deleteJournal(data.date));
-  updateJournalScrollFade();
+  scheduleJournalScrollFade();
 }
 
 async function copyJournal(data) {
@@ -1341,6 +1354,12 @@ async function submitJournalChat(question) {
 function initJournalDock() {
   readJournalLayout();
   applyJournalLayout();
+
+  const detail = $("#journal-detail");
+  if (detail && typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => scheduleJournalScrollFade());
+    ro.observe(detail);
+  }
 
   $("#journal-dock")?.addEventListener("click", async (event) => {
     const btn = event.target.closest?.(".journal-dock-btn");
@@ -1665,12 +1684,6 @@ async function removeSelectedWatched() {
     showBanner(err.message, "error");
     await loadWatched();
   }
-}
-
-function updateScrollFade(scroll, wrap) {
-  if (!scroll || !wrap) return;
-  const more = scroll.scrollTop + scroll.clientHeight < scroll.scrollHeight - 2;
-  wrap.classList.toggle("has-more", more);
 }
 
 function updateDialogScrollFade() {

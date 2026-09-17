@@ -970,6 +970,41 @@ main {
   overflow: hidden;
 }
 
+.journal-detail-panel > .list-scroll-wrap,
+.journal-detail-panel > .journal-editor-wrap {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.journal-detail-panel > .list-scroll-wrap > .list-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  max-height: 100%;
+}
+
+.journal-detail-panel > .journal-editor-wrap > .journal-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.journal-detail-panel > .list-scroll-wrap::after {
+  z-index: 3;
+}
+
+.journal-detail-panel > .journal-attach {
+  position: relative;
+  z-index: 4;
+  flex: 0 0 auto;
+  margin-top: 4px;
+  padding-top: 4px;
+  background: var(--panel);
+}
+
 .list button.link.selected {
   color: var(--accent);
 }
@@ -1319,17 +1354,6 @@ main {
   margin-bottom: 10px;
 }
 
-.journal-detail-panel > .list-scroll-wrap,
-.journal-detail-panel > .journal-editor-wrap {
-  flex: 1 1 0%;
-  min-height: 0;
-}
-
-.journal-detail-panel > .journal-attach {
-  flex: 0 0 auto;
-  margin-top: 4px;
-}
-
 .journal-detail-panel > .journal-attach h3 {
   margin-top: 8px;
 }
@@ -1478,8 +1502,9 @@ main {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 52px;
+  height: 56px;
   pointer-events: none;
+  z-index: 3;
   background: linear-gradient(to bottom, rgba(255, 255, 255, 0), var(--panel));
   opacity: 0;
   transition: opacity 0.18s ease;
@@ -3354,6 +3379,13 @@ button[type="submit"]:disabled,
 .markdown-body pre code {
   background: transparent;
   padding: 0;
+}
+
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0.6em 0;
 }
 
 .markdown-body a {
