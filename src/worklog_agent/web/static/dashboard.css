@@ -27,9 +27,14 @@ html, body {
   font: 15px/1.5 "Pretendard", "Noto Sans KR", "Segoe UI", sans-serif;
 }
 
+html:has(body:not(.login-mode)),
+body:not(.login-mode) {
+  height: 100%;
+  overflow: hidden;
+}
+
 body:not(.login-mode) {
   height: 100vh;
-  overflow: hidden;
 }
 
 .hidden { display: none !important; }
@@ -3281,10 +3286,45 @@ button[type="submit"]:disabled,
 }
 
 .toast.toast-confirm {
+  position: fixed;
   display: grid;
   gap: 14px;
   pointer-events: auto;
   text-align: center;
+}
+
+.toast-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.toast-close:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.toast-close .material-symbols-outlined {
+  font-size: 18px;
+  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 20;
+  line-height: 1;
+}
+
+.toast.toast-confirm .toast-text {
+  padding-inline: 22px;
 }
 
 .toast-actions {

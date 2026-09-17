@@ -232,7 +232,7 @@ def _format_shared_at(value: str | None, tz_name: str) -> str | None:
         local = when.astimezone(ZoneInfo(tz_name))
     except Exception:
         local = when.astimezone(timezone.utc)
-    return local.strftime("%Y-%m-%d %H:%M")
+    return f"{local.year}년 {local.month}월 {local.day}일 {local.strftime('%H:%M')}"
 
 
 def _path_mtime(path: Path) -> datetime | None:

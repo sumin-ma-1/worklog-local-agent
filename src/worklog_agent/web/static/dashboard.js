@@ -75,7 +75,7 @@ function showBanner(message, kind) {
   if (toastConfirmResolver) {
     const resolve = toastConfirmResolver;
     toastConfirmResolver = null;
-    resolve(false);
+    resolve(null);
   }
   clearToastTimer();
   if (!message) {
@@ -104,11 +104,11 @@ function showConfirmToast(
   } = {}
 ) {
   const el = $("#toast");
-  if (!el) return Promise.resolve(false);
+  if (!el) return Promise.resolve(null);
   if (toastConfirmResolver) {
     const resolve = toastConfirmResolver;
     toastConfirmResolver = null;
-    resolve(false);
+    resolve(null);
   }
   clearToastTimer();
   const iconHtml = (name) =>
@@ -123,9 +123,18 @@ function showConfirmToast(
         <button type="button" class="toast-action toast-action-cancel" data-toast-confirm="0">${iconHtml(cancelIcon)}${escapeHtml(cancelLabel)}</button>
         <button type="button" class="toast-action toast-action-confirm" data-toast-confirm="1">${iconHtml(confirmIcon)}${escapeHtml(confirmLabel)}</button>
       </span>
+      <button type="button" class="toast-close" data-toast-confirm="dismiss" title="닫기" aria-label="닫기">
+        <span class="material-symbols-outlined" aria-hidden="true">close</span>
+      </button>
     `;
     el.className = "toast show toast-confirm info";
-    el.querySelector(".toast-action-confirm")?.focus();
+    const confirmBtn = el.querySelector(".toast-action-confirm");
+    if (confirmBtn && typeof confirmBtn.focus === "function") {
+      confirmBtn.focus({ preventScroll: true });
+    }
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
   });
 }
 
@@ -1184,18 +1193,20 @@ function printJournal() {
 }
 
 async function pickShareMode() {
-  const live = await showConfirmToast("공유 방식을 선택하세요.", {
+  const choice = await showConfirmToast("공유 방식을 선택하세요.", {
     confirmLabel: "최신 반영",
     cancelLabel: "현재 고정",
     confirmIcon: "sync",
     cancelIcon: "lock",
   });
-  return live ? "live" : "snapshot";
+  if (choice == null) return null;
+  return choice ? "live" : "snapshot";
 }
 
 async function shareJournal(day) {
   try {
     const mode = await pickShareMode();
+    if (!mode) return;
     const data = await api(`/api/journals/${day}/share`, {
       method: "POST",
       body: JSON.stringify({ mode }),
@@ -1217,6 +1228,7 @@ async function shareJournal(day) {
 async function shareJournalLibrary() {
   try {
     const mode = await pickShareMode();
+    if (!mode) return;
     const data = await api("/api/journals/share-library", {
       method: "POST",
       body: JSON.stringify({ mode }),
@@ -2783,21 +2795,26 @@ $("#sidebar-logout")?.addEventListener("click", async () => {
     cancelLabel: "취소",
     cancelIcon: "undo",
   });
-  if (!ok) return;
+  if (ok !== true) return;
   doLogout().catch((err) => showBanner(err.message, "error"));
 });
 
 $("#toast")?.addEventListener("click", (event) => {
   const btn = event.target.closest?.("[data-toast-confirm]");
   if (!btn || !toastConfirmResolver) return;
-  resolveToastConfirm(btn.dataset.toastConfirm === "1");
+  const value = btn.dataset.toastConfirm;
+  if (value === "dismiss") {
+    resolveToastConfirm(null);
+    return;
+  }
+  resolveToastConfirm(value === "1");
 });
 
 document.addEventListener("keydown", (event) => {
   if (!toastConfirmResolver) return;
   if (event.key === "Escape") {
     event.preventDefault();
-    resolveToastConfirm(false);
+    resolveToastConfirm(null);
   }
 });
 
