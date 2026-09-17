@@ -2105,15 +2105,22 @@ function initJournalDockPosition() {
   let dragging = false;
   let startX = 0;
   let startY = 0;
-  const THRESHOLD = 6;
+  const THRESHOLD = 8;
 
   const onMove = (event) => {
     if (!dragging) return;
     const dx = event.clientX - startX;
     const dy = event.clientY - startY;
     if (!journalDockDidDrag && Math.hypot(dx, dy) < THRESHOLD) return;
-    journalDockDidDrag = true;
-    dock.classList.add("is-dragging");
+    if (!journalDockDidDrag) {
+      journalDockDidDrag = true;
+      dock.classList.add("is-dragging");
+      try {
+        dock.setPointerCapture?.(event.pointerId);
+      } catch (_) {
+        /* ignore */
+      }
+    }
     updateDockFromPointer(event.clientX, event.clientY);
   };
 
@@ -2132,17 +2139,26 @@ function initJournalDockPosition() {
     if (journalDockDidDrag) {
       updateDockFromPointer(event.clientX, event.clientY);
       persistJournalDockPos();
+      // 드래그 직후 합성 click 차단
+      const blockClick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        dock.removeEventListener("click", blockClick, true);
+      };
+      dock.addEventListener("click", blockClick, true);
+      setTimeout(() => dock.removeEventListener("click", blockClick, true), 0);
     }
+    journalDockDidDrag = false;
   };
 
   dock.addEventListener("pointerdown", (event) => {
     if (event.button != null && event.button !== 0) return;
-    // 버튼 클릭은 유지하되, 드래그 시작하면 클릭 무시
+    // 아이콘 버튼 클릭은 드래그로 가로채지 않음
+    if (event.target.closest?.(".journal-dock-btn")) return;
     dragging = true;
     journalDockDidDrag = false;
     startX = event.clientX;
     startY = event.clientY;
-    dock.setPointerCapture?.(event.pointerId);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
@@ -2168,12 +2184,6 @@ function initJournalDock() {
   }
 
   $("#journal-dock")?.addEventListener("click", async (event) => {
-    if (journalDockDidDrag) {
-      event.preventDefault();
-      event.stopPropagation();
-      journalDockDidDrag = false;
-      return;
-    }
     const btn = event.target.closest?.(".journal-dock-btn");
     if (!btn) return;
     const action = btn.dataset.dock;

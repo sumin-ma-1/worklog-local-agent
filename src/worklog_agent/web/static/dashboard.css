@@ -1046,7 +1046,7 @@ main {
   bottom: auto;
   right: auto;
   transform: translate(-50%, -50%);
-  z-index: 35;
+  z-index: 55;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1073,21 +1073,21 @@ main {
 }
 
 .journal-dock.is-edge-top {
-  top: 0;
+  top: 10px;
   bottom: auto;
   left: var(--dock-offset, 50%);
   right: auto;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, 0);
   flex-direction: row;
   padding: 6px 14px;
 }
 
 .journal-dock.is-edge-bottom {
   top: auto;
-  bottom: 0;
+  bottom: 10px;
   left: var(--dock-offset, 50%);
   right: auto;
-  transform: translate(-50%, 50%);
+  transform: translate(-50%, 0);
   flex-direction: row;
   padding: 6px 14px;
 }
@@ -1095,9 +1095,9 @@ main {
 .journal-dock.is-edge-left {
   top: var(--dock-offset, 50%);
   bottom: auto;
-  left: 0;
+  left: 10px;
   right: auto;
-  transform: translate(-50%, -50%);
+  transform: translate(0, -50%);
   flex-direction: column;
   padding: 14px 6px;
 }
@@ -1106,8 +1106,8 @@ main {
   top: var(--dock-offset, 50%);
   bottom: auto;
   left: auto;
-  right: 0;
-  transform: translate(50%, -50%);
+  right: 10px;
+  transform: translate(0, -50%);
   flex-direction: column;
   padding: 14px 6px;
 }
