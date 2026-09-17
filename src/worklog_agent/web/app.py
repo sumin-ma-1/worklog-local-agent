@@ -835,6 +835,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             "default_model": state.config.journal.ollama.model,
             "today": _today(cfg),
             "api_ready": _api_ready(state.config),
+            "dashboard_url": state.config.public_dashboard_url,
             "authenticated": True,
             "is_admin": is_admin_username(str(account.get("username") or "")),
             "chat_count": len(cfg.telegram.chats) if linked else 0,
@@ -1237,10 +1238,12 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         if not storage.has_any_journal(day) and not storage.daily_path(day).exists():
             raise HTTPException(status_code=404, detail="공유할 일지가 없습니다.")
         meta = create_share_token(cfg.data_root, day, mode=mode)
+        path = f"/s/{meta['token']}"
         return {
             "date": day,
             "token": meta["token"],
-            "url": f"/s/{meta['token']}",
+            "url": path,
+            "absolute_url": f"{state.config.public_dashboard_url}{path}",
             "mode": normalize_share_mode(meta.get("mode")),
         }
 
@@ -1253,10 +1256,12 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         if not dates:
             raise HTTPException(status_code=404, detail="공유할 일지가 없습니다.")
         meta = create_library_share_token(cfg.data_root, mode=mode)
+        path = f"/s/{meta['token']}"
         return {
             "scope": "library",
             "token": meta["token"],
-            "url": f"/s/{meta['token']}",
+            "url": path,
+            "absolute_url": f"{state.config.public_dashboard_url}{path}",
             "count": len(dates),
             "mode": normalize_share_mode(meta.get("mode")),
         }

@@ -641,15 +641,19 @@ def create_share_token(root: Path, day: str, *, mode: str = "live") -> dict[str,
 
     mode = normalize_share_mode(mode)
     shares = load_shares(root)
-    for token, meta in list(shares.items()):
+    # Reuse the same token for day+mode so re-sharing does not break links already sent.
+    existing: str | None = None
+    for token, meta in shares.items():
         if meta.get("day") == day and normalize_share_mode(meta.get("mode")) == mode:
-            _remove_share_token(root, shares, token)
-    token = secrets.token_urlsafe(24)
+            existing = token
+            break
+    token = existing or secrets.token_urlsafe(24)
+    prev = shares.get(token) if existing else None
     meta: dict[str, Any] = {
         "day": day,
         "scope": "day",
         "mode": mode,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": (prev or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
     }
     if mode == "snapshot":
         meta["snapshot"] = build_day_share_snapshot(Storage(root), day, token)
@@ -663,14 +667,18 @@ def create_library_share_token(root: Path, *, mode: str = "live") -> dict[str, A
 
     mode = normalize_share_mode(mode)
     shares = load_shares(root)
-    for token, meta in list(shares.items()):
+    # Reuse the same token for library+mode so re-sharing does not break links already sent.
+    existing: str | None = None
+    for token, meta in shares.items():
         if meta.get("scope") == "library" and normalize_share_mode(meta.get("mode")) == mode:
-            _remove_share_token(root, shares, token)
-    token = secrets.token_urlsafe(24)
+            existing = token
+            break
+    token = existing or secrets.token_urlsafe(24)
+    prev = shares.get(token) if existing else None
     meta: dict[str, Any] = {
         "scope": "library",
         "mode": mode,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": (prev or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
     }
     if mode == "snapshot":
         storage = Storage(root)

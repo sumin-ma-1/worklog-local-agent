@@ -70,3 +70,23 @@ def test_user_telegram_and_share(tmp_path: Path) -> None:
     found = find_share(tmp_path, meta["token"])
     assert found is not None
     assert found[1]["day"] == "2026-03-05"
+    again = create_share_token(users, "2026-03-05")
+    assert again["token"] == meta["token"]
+    assert find_share(tmp_path, meta["token"]) is not None
+
+
+def test_library_share_reuses_token(tmp_path: Path) -> None:
+    from worklog_agent.users import create_library_share_token
+
+    users = tmp_path / "users" / "u1"
+    users.mkdir(parents=True)
+    (users / "journals").mkdir()
+    (users / "journals" / "2026-03-05.md").write_text("# hi\n", encoding="utf-8")
+    first = create_library_share_token(users, mode="live")
+    second = create_library_share_token(users, mode="live")
+    assert first["token"] == second["token"]
+    assert find_share(tmp_path, first["token"]) is not None
+    snap_a = create_library_share_token(users, mode="snapshot")
+    snap_b = create_library_share_token(users, mode="snapshot")
+    assert snap_a["token"] == snap_b["token"]
+    assert snap_a["token"] != first["token"]

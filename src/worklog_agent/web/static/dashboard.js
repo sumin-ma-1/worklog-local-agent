@@ -31,6 +31,7 @@ const state = {
   model: "",
   defaultModel: "gemma4:e4b",
   models: [],
+  dashboardUrl: "",
   today: null,
   chatCount: 0,
   journalCount: 0,
@@ -525,6 +526,7 @@ async function loadOverview() {
   state.timezone = data.timezone || state.timezone || "Asia/Seoul";
   state.model = data.model || state.model || "";
   if (data.default_model) state.defaultModel = data.default_model;
+  state.dashboardUrl = String(data.dashboard_url || "").replace(/\/$/, "");
   state.today = data.today || state.today;
   state.chatCount = data.chat_count || 0;
   state.journalCount = data.journal_count || 0;
@@ -1619,6 +1621,54 @@ async function pickShareMode() {
   return choice ? "live" : "snapshot";
 }
 
+function resolveShareUrl(data) {
+  const absolute = String(data?.absolute_url || "").trim();
+  if (/^https?:\/\//i.test(absolute)) return absolute;
+  const path = String(data?.url || "").trim();
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  const base = String(state.dashboardUrl || "").replace(/\/$/, "");
+  if (base && path.startsWith("/")) return `${base}${path}`;
+  const origin = String(window.location.origin || "").replace(/\/$/, "");
+  if (origin && path.startsWith("/")) return `${origin}${path}`;
+  return path;
+}
+
+function isLoopbackShareUrl(url) {
+  try {
+    const host = new URL(url).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return false;
+  }
+}
+
+async function copyShareUrl(url, successMessage) {
+  let copied = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      copied = true;
+    }
+  } catch {
+    copied = false;
+  }
+  if (!copied) {
+    window.prompt("공유 링크", url);
+    showBanner(successMessage.replace("복사했습니다", "만들었습니다"), "ok");
+    return;
+  }
+  if (isLoopbackShareUrl(url)) {
+    window.prompt(
+      "이 링크는 이 PC에서만 열립니다. 외부 공유용 공개 주소(DASHBOARD_URL)를 설정한 뒤 다시 공유하세요.",
+      url
+    );
+    showBanner("공유 링크가 localhost라 외부에서 열리지 않습니다.", "error");
+    return;
+  }
+  showBanner(successMessage, "ok");
+}
+
 async function shareJournal(day) {
   try {
     const mode = await pickShareMode();
@@ -1627,15 +1677,9 @@ async function shareJournal(day) {
       method: "POST",
       body: JSON.stringify({ mode }),
     });
-    const url = `${window.location.origin}${data.url}`;
+    const url = resolveShareUrl(data);
     const label = data.mode === "snapshot" ? "현재 버전 고정" : "최신 반영";
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(url);
-      showBanner(`${label} 공유 링크를 복사했습니다.`, "ok");
-    } else {
-      window.prompt("공유 링크", url);
-      showBanner(`${label} 공유 링크를 만들었습니다.`, "ok");
-    }
+    await copyShareUrl(url, `${label} 공유 링크를 복사했습니다.`);
   } catch (err) {
     showBanner(err.message, "error");
   }
@@ -1649,15 +1693,9 @@ async function shareJournalLibrary() {
       method: "POST",
       body: JSON.stringify({ mode }),
     });
-    const url = `${window.location.origin}${data.url}`;
+    const url = resolveShareUrl(data);
     const label = data.mode === "snapshot" ? "현재 버전 고정" : "최신 반영";
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(url);
-      showBanner(`${label} 전체 일지 공유 링크를 복사했습니다.`, "ok");
-    } else {
-      window.prompt("전체 일지 공유 링크", url);
-      showBanner(`${label} 전체 일지 공유 링크를 만들었습니다.`, "ok");
-    }
+    await copyShareUrl(url, `${label} 전체 일지 공유 링크를 복사했습니다.`);
   } catch (err) {
     showBanner(err.message, "error");
   }
