@@ -885,13 +885,36 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             root = user_root(state.config.data_root, user["id"])
             journal_count = 0
             chat_count = 0
+            linked = telegram_linked(root, session_name)
             if root.is_dir():
                 journal_count = len(Storage(root).list_journal_dates())
                 chat_count = len(load_user_chats(root))
+            telegram_name = None
+            if linked:
+                meta = load_user_telegram(root)
+                telegram_name = str(meta.get("name") or "").strip() or None
+                if not telegram_name and _api_ready(state.config):
+                    try:
+                        cfg = user_config(state.config, user["id"])
+                        status = await auth_status(cfg)
+                        status_user = status.get("user") if isinstance(status.get("user"), dict) else None
+                        if status.get("authorized") and status_user:
+                            telegram_name = str(status_user.get("name") or "").strip() or None
+                            if telegram_name or status_user.get("id") is not None:
+                                save_user_telegram(
+                                    root,
+                                    {
+                                        "name": telegram_name,
+                                        "telegram_user_id": status_user.get("id"),
+                                    },
+                                )
+                    except Exception:
+                        logger.exception("관리자 목록 텔레그램 이름 조회 실패: %s", user["id"])
             users.append(
                 {
                     **user,
-                    "telegram_linked": telegram_linked(root, session_name),
+                    "telegram_linked": linked,
+                    "telegram_name": telegram_name,
                     "last_seen": last_seen.get(str(user["id"])),
                     "journal_count": journal_count,
                     "chat_count": chat_count,

@@ -273,6 +273,12 @@ def test_admin_users_api(tmp_path: Path) -> None:
     other_data = _register(other, "member1", "password1")
     _link_session(app.state.dashboard, admin_data["user"]["id"])
     _link_session(app.state.dashboard, other_data["user"]["id"])
+    from worklog_agent.users import save_user_telegram, user_root as user_data_root
+
+    save_user_telegram(
+        user_data_root(app.state.dashboard.config.data_root, other_data["user"]["id"]),
+        {"phone": "+821011122233", "telegram_user_id": 99, "name": "멤버 텔레그램"},
+    )
 
     forbidden = other.get("/api/admin/users")
     assert forbidden.status_code == 403
@@ -285,6 +291,7 @@ def test_admin_users_api(tmp_path: Path) -> None:
     assert all("password_hash" not in item for item in users)
     member = next(item for item in users if item["username"] == "member1")
     assert member["telegram_linked"] is True
+    assert member["telegram_name"] == "멤버 텔레그램"
     assert member["journal_count"] == 0
     assert member["chat_count"] == 0
     assert member["last_seen"]

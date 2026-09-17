@@ -9,6 +9,7 @@ const state = {
   isAdmin: false,
   username: null,
   authMode: "login",
+  pendingRegistration: false,
   journals: [],
   journalSelected: null,
   calendarMonth: null,
@@ -522,11 +523,7 @@ async function loadOverview() {
   state.journalCount = data.journal_count || 0;
   const tg = data.telegram || {};
   state.telegramLabel = tg.linked || tg.authorized
-    ? tg.user?.name
-      ? `연동 · ${tg.user.name}`
-      : tg.user?.id
-        ? `연동 · ${tg.user.id}`
-        : "연동됨"
+    ? tg.user?.name || (tg.user?.id ? String(tg.user.id) : "—")
     : data.authenticated
       ? "미연동"
       : "미로그인";
@@ -1786,7 +1783,9 @@ function renderAccounts(users) {
   body.innerHTML = state.accounts
     .map((user) => {
       const self = state.username && user.username === state.username;
-      const linked = user.telegram_linked ? "연동" : "미연동";
+      const telegram = user.telegram_linked
+        ? String(user.telegram_name || "").trim() || "—"
+        : "미연동";
       const chats = Number.isFinite(Number(user.chat_count)) ? String(user.chat_count) : "0";
       const journals = Number.isFinite(Number(user.journal_count)) ? String(user.journal_count) : "0";
       const action = self
@@ -1799,7 +1798,7 @@ function renderAccounts(users) {
           <td>${escapeHtml(formatAccountDate(user.last_seen))}</td>
           <td>${escapeHtml(chats)}</td>
           <td>${escapeHtml(journals)}</td>
-          <td>${linked}</td>
+          <td>${escapeHtml(telegram)}</td>
           <td class="accounts-actions">${action}</td>
         </tr>`;
     })
@@ -2927,9 +2926,11 @@ $("#account-form")?.addEventListener("submit", async (event) => {
     if ($("#password-confirm-input")) $("#password-confirm-input").value = "";
     const linked = Boolean(data.telegram?.linked || data.telegram?.authorized);
     if (linked) {
+      state.pendingRegistration = false;
       showBanner(state.authMode === "register" ? "가입되었습니다." : "로그인되었습니다.", "ok");
       await enterDashboard();
     } else {
+      state.pendingRegistration = state.authMode === "register";
       showTelegramPanel(data.telegram?.phone);
       applyAuthVisibility(false);
       if (!data.telegram?.api_ready) {
@@ -2973,7 +2974,7 @@ $("#login-form").addEventListener("submit", async (event) => {
       status.textContent = data.message;
       status.classList.remove("hidden");
     }
-    if (data.stage === "authorized") await enterDashboard();
+    if (data.stage === "authorized") await finishTelegramAuth();
   } catch (err) {
     if (status) {
       status.textContent = "텔레그램 연동이 필요합니다.";
@@ -3002,7 +3003,7 @@ $("#login-code-form").addEventListener("submit", async (event) => {
       status.classList.remove("hidden");
     }
     $("#login-code-input").value = "";
-    if (data.stage === "authorized") await enterDashboard();
+    if (data.stage === "authorized") await finishTelegramAuth();
   } catch (err) {
     showBanner(err.message, "error");
   }
@@ -3022,11 +3023,43 @@ $("#login-password-form").addEventListener("submit", async (event) => {
       status.classList.remove("hidden");
     }
     $("#login-password-input").value = "";
-    if (data.stage === "authorized") await enterDashboard();
+    if (data.stage === "authorized") await finishTelegramAuth();
   } catch (err) {
     showBanner(err.message, "error");
   }
 });
+
+async function finishTelegramAuth() {
+  const wasPending = state.pendingRegistration;
+  state.pendingRegistration = false;
+  if (wasPending) showBanner("가입되었습니다.", "ok");
+  await enterDashboard();
+}
+
+async function cancelIncompleteRegistration() {
+  const pending = state.pendingRegistration;
+  try {
+    if (pending) {
+      await api("/api/auth/withdraw", { method: "POST", body: "{}" });
+    } else {
+      await api("/api/auth/logout", { method: "POST", body: "{}" });
+    }
+  } catch (_) {
+    try {
+      await api("/api/auth/logout", { method: "POST", body: "{}" });
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  state.dialogs = [];
+  state.loginStage = "idle";
+  state.authenticated = false;
+  state.username = null;
+  state.pendingRegistration = false;
+  showAccountPanel();
+  applyAuthVisibility(false);
+  if (pending) showBanner("텔레그램 연동 전에 가입이 취소되었습니다.", "info");
+}
 
 async function restartLogin() {
   state.loginStage = "idle";
@@ -3044,17 +3077,7 @@ async function restartLogin() {
 }
 
 async function backToAccountLogin() {
-  try {
-    await api("/api/auth/logout", { method: "POST", body: "{}" });
-  } catch (_) {
-    /* ignore */
-  }
-  state.dialogs = [];
-  state.loginStage = "idle";
-  state.authenticated = false;
-  state.username = null;
-  showAccountPanel();
-  applyAuthVisibility(false);
+  await cancelIncompleteRegistration();
 }
 
 async function restartAuthFromTelegram() {
