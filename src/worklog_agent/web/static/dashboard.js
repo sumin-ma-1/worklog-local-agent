@@ -31,6 +31,13 @@ const state = {
   chatCount: 0,
   journalCount: 0,
   telegramLabel: "",
+  journalLayout: {
+    showCalendar: true,
+    showList: true,
+    listFirst: false,
+    editing: false,
+    chatOpen: false,
+  },
 };
 
 let toastTimer = null;
@@ -1193,6 +1200,251 @@ async function deleteJournal(day) {
   } catch (err) {
     showBanner(err.message, "error");
   }
+}
+
+const JOURNAL_LAYOUT_KEY = "worklog.journalLayout";
+
+function readJournalLayout() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(JOURNAL_LAYOUT_KEY) || "{}");
+    if (raw && typeof raw === "object") {
+      state.journalLayout.showCalendar = raw.showCalendar !== false;
+      state.journalLayout.showList = raw.showList !== false;
+      state.journalLayout.listFirst = Boolean(raw.listFirst);
+    }
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function persistJournalLayout() {
+  try {
+    localStorage.setItem(
+      JOURNAL_LAYOUT_KEY,
+      JSON.stringify({
+        showCalendar: state.journalLayout.showCalendar,
+        showList: state.journalLayout.showList,
+        listFirst: state.journalLayout.listFirst,
+      })
+    );
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function applyJournalLayout() {
+  const view = $("#view-journals");
+  const browse = $("#journal-browse");
+  const cal = $("#journal-calendar-panel");
+  const list = $("#journal-list-panel");
+  const layout = state.journalLayout;
+  if (!view) return;
+  view.classList.toggle("is-layout-editing", Boolean(layout.editing));
+  cal?.classList.toggle("is-hidden-panel", !layout.showCalendar);
+  list?.classList.toggle("is-hidden-panel", !layout.showList);
+  browse?.classList.toggle("is-list-first", Boolean(layout.listFirst));
+  browse?.classList.toggle("hidden", !layout.showCalendar && !layout.showList);
+
+  ["journal-calendar-panel", "journal-list-panel"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.draggable = Boolean(layout.editing);
+  });
+
+  const calBtn = $(`.journal-dock-btn[data-dock="calendar"]`);
+  const listBtn = $(`.journal-dock-btn[data-dock="list"]`);
+  const editBtn = $(`.journal-dock-btn[data-dock="edit"]`);
+  const chatBtn = $(`.journal-dock-btn[data-dock="chat"]`);
+  if (calBtn) {
+    calBtn.classList.toggle("is-on", layout.showCalendar);
+    calBtn.classList.toggle("is-off", !layout.showCalendar);
+    calBtn.setAttribute("aria-pressed", layout.showCalendar ? "true" : "false");
+    calBtn.title = layout.showCalendar ? "달력 숨기기" : "달력 표시";
+  }
+  if (listBtn) {
+    listBtn.classList.toggle("is-on", layout.showList);
+    listBtn.classList.toggle("is-off", !layout.showList);
+    listBtn.setAttribute("aria-pressed", layout.showList ? "true" : "false");
+    listBtn.title = layout.showList ? "리스트 숨기기" : "리스트 표시";
+  }
+  if (editBtn) {
+    editBtn.classList.toggle("is-active", Boolean(layout.editing));
+    editBtn.setAttribute("aria-pressed", layout.editing ? "true" : "false");
+    editBtn.title = layout.editing ? "레이아웃 수정 종료" : "레이아웃 수정";
+  }
+  if (chatBtn) {
+    chatBtn.classList.toggle("is-active", Boolean(layout.chatOpen));
+    chatBtn.setAttribute("aria-pressed", layout.chatOpen ? "true" : "false");
+  }
+  const chat = $("#journal-chat-panel");
+  chat?.classList.toggle("hidden", !layout.chatOpen);
+  chat?.setAttribute("aria-hidden", layout.chatOpen ? "false" : "true");
+  requestAnimationFrame(updateJournalScrollFade);
+}
+
+function setJournalChatOpen(open) {
+  state.journalLayout.chatOpen = Boolean(open);
+  if (open) state.journalLayout.editing = false;
+  applyJournalLayout();
+  if (open) {
+    const log = $("#journal-chat-log");
+    if (log && !log.dataset.ready) {
+      log.dataset.ready = "1";
+      appendJournalChatMessage(
+        "bot",
+        "일지 내용을 바탕으로 질문해 주세요. 관련 날짜를 찾으면 바로 열 수 있습니다."
+      );
+    }
+    $("#journal-chat-input")?.focus();
+  }
+}
+
+function appendJournalChatMessage(role, text, day = null) {
+  const log = $("#journal-chat-log");
+  if (!log) return;
+  const el = document.createElement("div");
+  el.className = `journal-chat-msg is-${role === "user" ? "user" : "bot"}`;
+  el.textContent = text;
+  if (day) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chat-day-link";
+    btn.dataset.day = day;
+    btn.textContent = `${day} 일지 열기`;
+    el.appendChild(document.createElement("br"));
+    el.appendChild(btn);
+  }
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
+async function submitJournalChat(question) {
+  const q = String(question || "").trim();
+  if (!q) return;
+  appendJournalChatMessage("user", q);
+  appendJournalChatMessage("bot", "찾는 중…");
+  const log = $("#journal-chat-log");
+  const pending = log?.lastElementChild;
+  try {
+    const data = await api("/api/journals/ask", {
+      method: "POST",
+      body: JSON.stringify({ question: q }),
+    });
+    const day = Array.isArray(data.days) && data.days[0] ? data.days[0] : null;
+    if (pending) pending.remove();
+    appendJournalChatMessage("bot", data.answer || "답변이 없습니다.", day);
+  } catch (err) {
+    if (pending) pending.remove();
+    appendJournalChatMessage("bot", err.message || "질의에 실패했습니다.");
+  }
+}
+
+function initJournalDock() {
+  readJournalLayout();
+  applyJournalLayout();
+
+  $("#journal-dock")?.addEventListener("click", async (event) => {
+    const btn = event.target.closest?.(".journal-dock-btn");
+    if (!btn) return;
+    const action = btn.dataset.dock;
+    if (action === "calendar") {
+      state.journalLayout.showCalendar = !state.journalLayout.showCalendar;
+      persistJournalLayout();
+      applyJournalLayout();
+      return;
+    }
+    if (action === "list") {
+      state.journalLayout.showList = !state.journalLayout.showList;
+      persistJournalLayout();
+      applyJournalLayout();
+      return;
+    }
+    if (action === "edit") {
+      state.journalLayout.editing = !state.journalLayout.editing;
+      if (state.journalLayout.editing) {
+        state.journalLayout.chatOpen = false;
+        showBanner("레이아웃 수정: 패널 X로 숨기기, 달력/리스트를 드래그해 순서 변경", "info");
+      }
+      applyJournalLayout();
+      return;
+    }
+    if (action === "share") {
+      const day = state.journalSelected;
+      if (!day) {
+        showBanner("공유할 일지를 먼저 선택하세요.", "error");
+        return;
+      }
+      await shareJournal(day);
+      return;
+    }
+    if (action === "chat") {
+      setJournalChatOpen(!state.journalLayout.chatOpen);
+    }
+  });
+
+  $("#journal-browse")?.addEventListener("click", (event) => {
+    const hideBtn = event.target.closest?.(".layout-panel-hide");
+    if (!hideBtn || !state.journalLayout.editing) return;
+    const panel = hideBtn.dataset.hidePanel;
+    if (panel === "calendar") state.journalLayout.showCalendar = false;
+    if (panel === "list") state.journalLayout.showList = false;
+    persistJournalLayout();
+    applyJournalLayout();
+  });
+
+  const browse = $("#journal-browse");
+  if (browse) {
+    let dragPanel = null;
+    browse.addEventListener("dragstart", (event) => {
+      if (!state.journalLayout.editing) {
+        event.preventDefault();
+        return;
+      }
+      const panel = event.target.closest?.("[data-layout-panel]");
+      if (!panel || (panel.dataset.layoutPanel !== "calendar" && panel.dataset.layoutPanel !== "list")) {
+        event.preventDefault();
+        return;
+      }
+      dragPanel = panel.dataset.layoutPanel;
+      event.dataTransfer.effectAllowed = "move";
+      panel.classList.add("is-dragging");
+    });
+    browse.addEventListener("dragend", () => {
+      dragPanel = null;
+      browse.querySelectorAll(".is-dragging").forEach((el) => el.classList.remove("is-dragging"));
+    });
+    browse.addEventListener("dragover", (event) => {
+      if (!state.journalLayout.editing || !dragPanel) return;
+      event.preventDefault();
+    });
+    browse.addEventListener("drop", (event) => {
+      if (!state.journalLayout.editing || !dragPanel) return;
+      const target = event.target.closest?.("[data-layout-panel]");
+      if (!target) return;
+      event.preventDefault();
+      const to = target.dataset.layoutPanel;
+      if (dragPanel === to) return;
+      if ((dragPanel === "calendar" || dragPanel === "list") && (to === "calendar" || to === "list")) {
+        state.journalLayout.listFirst = !state.journalLayout.listFirst;
+        persistJournalLayout();
+        applyJournalLayout();
+      }
+      dragPanel = null;
+    });
+  }
+
+  $("#journal-chat-close")?.addEventListener("click", () => setJournalChatOpen(false));
+  $("#journal-chat-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("#journal-chat-input");
+    const value = input?.value || "";
+    if (input) input.value = "";
+    submitJournalChat(value).catch((err) => showBanner(err.message, "error"));
+  });
+  $("#journal-chat-log")?.addEventListener("click", (event) => {
+    const link = event.target.closest?.(".chat-day-link");
+    if (!link?.dataset.day) return;
+    loadJournal(link.dataset.day).catch((err) => showBanner(err.message, "error"));
+  });
 }
 
 function formatAccountDate(value) {
@@ -2519,6 +2771,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 initSidebarToggle();
+initJournalDock();
 bindSidebarBrand();
 
 $("#sidebar-account")?.addEventListener("click", (event) => {

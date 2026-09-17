@@ -167,6 +167,10 @@ class JournalPromptBody(BaseModel):
     sections: list[str] = Field(min_length=1, max_length=20)
 
 
+class JournalAskBody(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
 class PreferencesBody(BaseModel):
     timezone: str | None = Field(default=None, min_length=1, max_length=64)
     model: str | None = Field(default=None, min_length=1, max_length=128)
@@ -888,6 +892,46 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         day = _require_day(day)
         removed = revoke_share_for_day(cfg.data_root, day)
         return {"date": day, "revoked": removed > 0}
+
+    @app.post("/api/journals/ask")
+    async def ask_journals(request: Request, body: JournalAskBody) -> dict:
+        _, cfg = require_telegram(request)
+        storage = Storage(cfg.data_root)
+        dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
+        snippets: list[str] = []
+        for day in dates[:40]:
+            text = (storage.read_journal(day) or "").strip()
+            if not text:
+                continue
+            snippets.append(f"## {day}\n{text[:1200]}")
+        if not snippets:
+            return {
+                "answer": "아직 검색할 일지가 없습니다. 먼저 일지를 생성해 주세요.",
+                "days": [],
+            }
+        corpus = "\n\n".join(snippets)
+        system = (
+            "당신은 사용자의 업무 일지 검색 비서입니다. "
+            "아래 일지 내용만 근거로 한국어로 짧고 정확하게 답하세요. "
+            "관련 날짜가 있으면 답변 끝에 한 줄로 DAY:YYYY-MM-DD 형식으로 적어 주세요. "
+            "여러 날이면 가장 관련 있는 하루만 적으세요. 근거가 없으면 모른다고 말하세요."
+        )
+        user_prompt = f"질문: {body.question.strip()}\n\n일지:\n{corpus}"
+        try:
+            from worklog_agent.ollama import OllamaError, chat as ollama_chat
+
+            answer = await ollama_chat(cfg, system, user_prompt, model=cfg.journal.ollama.model)
+        except OllamaError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"일지 질의 실패: {exc}") from exc
+
+        days: list[str] = []
+        match = re.search(r"DAY:(\d{4}-\d{2}-\d{2})", answer or "")
+        if match:
+            days.append(match.group(1))
+            answer = re.sub(r"\n?DAY:\d{4}-\d{2}-\d{2}\s*$", "", answer).strip()
+        return {"answer": answer or "답변을 만들지 못했습니다.", "days": days}
 
     @app.get("/api/attachments/file")
     async def attachment_file(request: Request, path: str = Query(..., min_length=1)) -> FileResponse:
