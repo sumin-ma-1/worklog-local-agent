@@ -2417,11 +2417,11 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-const SIDEBAR_KEY = "worklog.sidebarCollapsed";
-const SIDEBAR_WIDTH_KEY = "worklog.sidebarWidth";
-const SIDEBAR_WIDTH_DEFAULT = 240;
-const SIDEBAR_WIDTH_MIN = 180;
+const SIDEBAR_WIDTH_KEY = "worklog.sidebarWidth.v4";
+const SIDEBAR_WIDTH_DEFAULT = 100;
+const SIDEBAR_WIDTH_MIN = 96;
 const SIDEBAR_WIDTH_MAX = 420;
+const SIDEBAR_WIDE_AT = 180;
 
 function clampSidebarWidth(px) {
   const max = Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, Math.floor(window.innerWidth * 0.45)));
@@ -2438,13 +2438,18 @@ function readStoredSidebarWidth() {
   return SIDEBAR_WIDTH_DEFAULT;
 }
 
+function syncSidebarLayoutMode(width) {
+  const shell = $("#app-shell");
+  if (!shell) return;
+  shell.classList.toggle("sidebar-wide", width >= SIDEBAR_WIDE_AT);
+}
+
 function applySidebarWidth(px, { persist = true } = {}) {
   const shell = $("#app-shell");
   if (!shell) return;
   const width = clampSidebarWidth(px);
-  if (!shell.classList.contains("sidebar-collapsed")) {
-    shell.style.setProperty("--sidebar-width", `${width}px`);
-  }
+  shell.style.setProperty("--sidebar-width", `${width}px`);
+  syncSidebarLayoutMode(width);
   const handle = $("#sidebar-resize");
   if (handle) {
     handle.setAttribute("aria-valuenow", String(width));
@@ -2459,32 +2464,6 @@ function applySidebarWidth(px, { persist = true } = {}) {
     }
   }
   return width;
-}
-
-function applySidebarCollapsed(collapsed) {
-  const shell = $("#app-shell");
-  const toggle = $("#sidebar-toggle");
-  const brand = $("#sidebar-brand");
-  if (!shell) return;
-  shell.classList.toggle("sidebar-collapsed", Boolean(collapsed));
-  if (collapsed) {
-    shell.style.setProperty("--sidebar-width", "72px");
-  } else {
-    applySidebarWidth(readStoredSidebarWidth(), { persist: false });
-  }
-  if (toggle) {
-    toggle.setAttribute("aria-label", collapsed ? "사이드바 펼치기" : "사이드바 접기");
-    toggle.title = collapsed ? "사이드바 펼치기" : "사이드바 접기";
-  }
-  if (brand) {
-    brand.title = collapsed ? "사이드바 펼치기" : "일지 홈";
-    brand.setAttribute("aria-label", collapsed ? "사이드바 펼치기" : "일지 홈");
-  }
-  try {
-    localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
-  } catch (_) {
-    /* ignore */
-  }
 }
 
 function initSidebarResize() {
@@ -2514,7 +2493,6 @@ function initSidebarResize() {
   };
 
   handle.addEventListener("pointerdown", (event) => {
-    if (shell.classList.contains("sidebar-collapsed")) return;
     if (event.button != null && event.button !== 0) return;
     event.preventDefault();
     dragging = true;
@@ -2530,7 +2508,6 @@ function initSidebarResize() {
   });
 
   handle.addEventListener("keydown", (event) => {
-    if (shell.classList.contains("sidebar-collapsed")) return;
     const step = event.shiftKey ? 24 : 12;
     if (event.key === "ArrowLeft") {
       event.preventDefault();
@@ -2548,36 +2525,19 @@ function initSidebarResize() {
   });
 
   window.addEventListener("resize", () => {
-    if (shell.classList.contains("sidebar-collapsed")) return;
     applySidebarWidth(readStoredSidebarWidth(), { persist: true });
   });
 }
 
-function initSidebarToggle() {
-  let collapsed = false;
-  try {
-    collapsed = localStorage.getItem(SIDEBAR_KEY) === "1";
-  } catch (_) {
-    collapsed = false;
-  }
+function initSidebar() {
   applySidebarWidth(readStoredSidebarWidth(), { persist: false });
-  applySidebarCollapsed(collapsed);
   initSidebarResize();
-  $("#sidebar-toggle")?.addEventListener("click", () => {
-    const next = !$("#app-shell")?.classList.contains("sidebar-collapsed");
-    applySidebarCollapsed(next);
-  });
 }
 
 function bindSidebarBrand() {
   const brand = $("#sidebar-brand");
   if (!brand) return;
   const activate = () => {
-    const collapsed = $("#app-shell")?.classList.contains("sidebar-collapsed");
-    if (collapsed) {
-      applySidebarCollapsed(false);
-      return;
-    }
     goJournalHome();
   };
   brand.addEventListener("click", activate);
@@ -2796,7 +2756,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-initSidebarToggle();
+initSidebar();
 initJournalDock();
 bindSidebarBrand();
 
