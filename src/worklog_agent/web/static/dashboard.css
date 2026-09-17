@@ -2843,6 +2843,59 @@ button[type="submit"]:disabled,
   transform: translate(-50%, -50%) scale(1);
 }
 
+.toast.toast-confirm {
+  display: grid;
+  gap: 14px;
+  pointer-events: auto;
+  text-align: center;
+}
+
+.toast-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.toast-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.toast-action .material-symbols-outlined {
+  font-size: 16px;
+  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 20;
+  line-height: 1;
+}
+
+.toast-action-cancel {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.toast-action-cancel:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.toast-action-confirm {
+  background: #fff;
+  color: var(--accent);
+}
+
+.toast-action-confirm:hover {
+  background: #f3f6ff;
+}
+
 .toast.ok { background: rgba(22, 101, 52, 0.95); }
 .toast.error { background: rgba(185, 28, 28, 0.95); }
 .toast.info { background: rgba(30, 58, 138, 0.95); }

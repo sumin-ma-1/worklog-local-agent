@@ -34,14 +34,43 @@ const state = {
 };
 
 let toastTimer = null;
+let toastConfirmResolver = null;
 
-function showBanner(message, kind) {
-  const el = $("#toast");
-  if (!el) return;
+function clearToastTimer() {
   if (toastTimer) {
     clearTimeout(toastTimer);
     toastTimer = null;
   }
+}
+
+function hideToastSoon(delay = 200) {
+  const el = $("#toast");
+  if (!el) return;
+  clearToastTimer();
+  el.classList.remove("show");
+  toastTimer = setTimeout(() => {
+    el.className = "toast hidden";
+    el.innerHTML = "";
+    toastTimer = null;
+  }, delay);
+}
+
+function resolveToastConfirm(result) {
+  const resolve = toastConfirmResolver;
+  toastConfirmResolver = null;
+  hideToastSoon();
+  if (resolve) resolve(result);
+}
+
+function showBanner(message, kind) {
+  const el = $("#toast");
+  if (!el) return;
+  if (toastConfirmResolver) {
+    const resolve = toastConfirmResolver;
+    toastConfirmResolver = null;
+    resolve(false);
+  }
+  clearToastTimer();
   if (!message) {
     el.className = "toast hidden";
     el.innerHTML = "";
@@ -54,13 +83,43 @@ function showBanner(message, kind) {
   el.innerHTML = `${icon}<span class="toast-text">${escapeHtml(message)}</span>`;
   el.className = `toast show ${kind || "info"}${icon ? " has-icon" : ""}`;
   toastTimer = setTimeout(() => {
-    el.classList.remove("show");
-    toastTimer = setTimeout(() => {
-      el.className = "toast hidden";
-      el.innerHTML = "";
-      toastTimer = null;
-    }, 200);
+    hideToastSoon();
   }, kind === "error" ? 3200 : 2200);
+}
+
+function showConfirmToast(
+  message,
+  {
+    confirmLabel = "확인",
+    cancelLabel = "취소",
+    confirmIcon = "",
+    cancelIcon = "",
+  } = {}
+) {
+  const el = $("#toast");
+  if (!el) return Promise.resolve(false);
+  if (toastConfirmResolver) {
+    const resolve = toastConfirmResolver;
+    toastConfirmResolver = null;
+    resolve(false);
+  }
+  clearToastTimer();
+  const iconHtml = (name) =>
+    name
+      ? `<span class="material-symbols-outlined" aria-hidden="true">${escapeHtml(name)}</span>`
+      : "";
+  return new Promise((resolve) => {
+    toastConfirmResolver = resolve;
+    el.innerHTML = `
+      <span class="toast-text">${escapeHtml(message)}</span>
+      <span class="toast-actions">
+        <button type="button" class="toast-action toast-action-cancel" data-toast-confirm="0">${iconHtml(cancelIcon)}${escapeHtml(cancelLabel)}</button>
+        <button type="button" class="toast-action toast-action-confirm" data-toast-confirm="1">${iconHtml(confirmIcon)}${escapeHtml(confirmLabel)}</button>
+      </span>
+    `;
+    el.className = "toast show toast-confirm info";
+    el.querySelector(".toast-action-confirm")?.focus();
+  });
 }
 
 async function api(path, options) {
@@ -2319,8 +2378,29 @@ async function restartLogin() {
 
 $("#login-restart")?.addEventListener("click", restartLogin);
 $("#login-restart-password")?.addEventListener("click", restartLogin);
-$("#sidebar-logout")?.addEventListener("click", () => {
+$("#sidebar-logout")?.addEventListener("click", async () => {
+  const ok = await showConfirmToast("정말로 로그아웃하겠습니까?", {
+    confirmLabel: "로그아웃",
+    confirmIcon: "logout",
+    cancelLabel: "취소",
+    cancelIcon: "undo",
+  });
+  if (!ok) return;
   doLogout().catch((err) => showBanner(err.message, "error"));
+});
+
+$("#toast")?.addEventListener("click", (event) => {
+  const btn = event.target.closest?.("[data-toast-confirm]");
+  if (!btn || !toastConfirmResolver) return;
+  resolveToastConfirm(btn.dataset.toastConfirm === "1");
+});
+
+document.addEventListener("keydown", (event) => {
+  if (!toastConfirmResolver) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    resolveToastConfirm(false);
+  }
 });
 
 initSidebarToggle();
