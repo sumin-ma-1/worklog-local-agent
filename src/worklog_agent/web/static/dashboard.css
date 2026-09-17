@@ -703,6 +703,15 @@ main {
   align-items: stretch;
 }
 
+#view-journals .split.is-detail-only {
+  grid-template-columns: 1fr;
+}
+
+#view-journals .split.is-detail-only .journal-detail-panel {
+  width: 100%;
+  max-width: none;
+}
+
 .journal-browse {
   display: flex;
   flex-direction: column;
@@ -3580,18 +3589,37 @@ body.share-mode {
 
 .share-library-shell {
   width: min(1100px, calc(100% - 32px));
+  margin: 24px auto 40px;
 }
 
 .share-library-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
+  min-height: calc(100vh - 48px);
+}
+
+.share-library-browse {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+
+.share-calendar-panel {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 14px;
 }
 
 .share-library-list-panel {
-  min-height: 320px;
+  flex: 1 1 auto;
+  min-height: 160px;
   padding: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .share-library-list-title {
@@ -3606,7 +3634,8 @@ body.share-mode {
   padding: 0;
   display: grid;
   gap: 6px;
-  max-height: min(70vh, 720px);
+  flex: 1;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: none;
@@ -3651,11 +3680,28 @@ body.share-mode {
 
 .share-library-detail {
   min-height: 320px;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.share-library-detail::-webkit-scrollbar {
+  width: 0;
+  display: none;
+}
+
+.share-calendar-panel .cal-day:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 @media (max-width: 800px) {
   .share-library-layout {
     grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .share-library-detail {
+    max-height: none;
   }
   .share-journal-list {
     max-height: 240px;

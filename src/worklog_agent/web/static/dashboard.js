@@ -1264,15 +1264,18 @@ function persistJournalLayout() {
 function applyJournalLayout() {
   const view = $("#view-journals");
   const browse = $("#journal-browse");
+  const split = $("#journal-split");
   const cal = $("#journal-calendar-panel");
   const list = $("#journal-list-panel");
   const layout = state.journalLayout;
   if (!view) return;
+  const browseHidden = !layout.showCalendar && !layout.showList;
   view.classList.toggle("is-layout-editing", Boolean(layout.editing));
   cal?.classList.toggle("is-hidden-panel", !layout.showCalendar);
   list?.classList.toggle("is-hidden-panel", !layout.showList);
   browse?.classList.toggle("is-list-first", Boolean(layout.listFirst));
-  browse?.classList.toggle("hidden", !layout.showCalendar && !layout.showList);
+  browse?.classList.toggle("hidden", browseHidden);
+  split?.classList.toggle("is-detail-only", browseHidden);
 
   ["journal-calendar-panel", "journal-list-panel"].forEach((id) => {
     const el = document.getElementById(id);
@@ -1307,7 +1310,7 @@ function applyJournalLayout() {
   const chat = $("#journal-chat-panel");
   chat?.classList.toggle("hidden", !layout.chatOpen);
   chat?.setAttribute("aria-hidden", layout.chatOpen ? "false" : "true");
-  requestAnimationFrame(updateJournalScrollFade);
+  scheduleJournalScrollFade();
 }
 
 function setJournalChatOpen(open) {
