@@ -78,13 +78,85 @@ class TelegramBotClient:
             payload["text"] = text[:200]
         return await self._call("answerCallbackQuery", payload)
 
+    async def send_chat_action(self, chat_id: int | str, action: str = "typing") -> dict:
+        return await self._call(
+            "sendChatAction",
+            {"chat_id": chat_id, "action": action},
+        )
 
-def _generate_keyboard(dates: list[str], label: str | None = None) -> dict:
+    async def set_chat_menu_button(
+        self,
+        *,
+        chat_id: int | str | None = None,
+        menu_button: dict | None = None,
+    ) -> dict:
+        payload: dict[str, Any] = {}
+        if chat_id is not None:
+            payload["chat_id"] = chat_id
+        if menu_button is not None:
+            payload["menu_button"] = menu_button
+        return await self._call("setChatMenuButton", payload)
+
+
+DASHBOARD_KEYBOARD_LABEL = "대시보드"
+
+
+def _generate_keyboard(
+    dates: list[str] | None = None,
+    label: str | None = None,
+) -> dict | None:
+    if not dates:
+        return None
     day = dates[0]
     title = f"{label or day} 일지 생성"
+    return {"inline_keyboard": [[{"text": title, "callback_data": f"gen:{day}"}]]}
+
+
+def _dashboard_menu_button(url: str) -> dict:
     return {
-        "inline_keyboard": [[{"text": title, "callback_data": f"gen:{day}"}]],
+        "type": "web_app",
+        "text": "🏠",
+        "web_app": {"url": url},
     }
+
+
+def _dashboard_reply_keyboard() -> dict:
+    """HTTP(로컬)용: 입력창 위 고정 버튼 (Telegram WebApp은 HTTPS만 허용)."""
+    return {
+        "keyboard": [[{"text": DASHBOARD_KEYBOARD_LABEL}]],
+        "resize_keyboard": True,
+        "is_persistent": True,
+    }
+
+
+def _is_https_url(url: str) -> bool:
+    return str(url or "").strip().lower().startswith("https://")
+
+
+async def _keep_typing(client: TelegramBotClient, chat_id: int | str, stop: asyncio.Event) -> None:
+    """Telegram typing indicator expires ~5s; refresh until stop."""
+    while not stop.is_set():
+        try:
+            await client.send_chat_action(chat_id, "typing")
+        except Exception:
+            logger.debug("sendChatAction(typing) 실패", exc_info=True)
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=4.0)
+        except asyncio.TimeoutError:
+            continue
+
+
+async def _run_while_typing(client: TelegramBotClient, chat_id: int | str, awaitable):
+    stop = asyncio.Event()
+    task = asyncio.create_task(_keep_typing(client, chat_id, stop))
+    try:
+        return await awaitable
+    finally:
+        stop.set()
+        try:
+            await task
+        except Exception:
+            pass
 
 
 class TelegramBotWorker:
@@ -111,12 +183,29 @@ class TelegramBotWorker:
             logger.info("TELEGRAM_BOT_TOKEN 없음 — 봇 폴링을 건너뜁니다.")
             return
         logger.info("텔레그램 봇 long polling 시작")
+        try:
+            asyncio.run(self._setup_dashboard_entry())
+        except Exception:
+            logger.exception("대시보드 메뉴 버튼 기본 설정 실패")
         while not self.stop_event.is_set():
             try:
                 asyncio.run(self._poll_once())
             except Exception:
                 logger.exception("텔레그램 봇 폴링 실패")
                 self.stop_event.wait(3)
+
+    async def _setup_dashboard_entry(self, chat_id: int | str | None = None) -> None:
+        """입력창 옆(메뉴) 또는 고정 키보드에 대시보드 진입점을 둔다."""
+        assert self.client is not None
+        url = self.config.public_dashboard_url
+        if _is_https_url(url):
+            try:
+                await self.client.set_chat_menu_button(
+                    chat_id=chat_id,
+                    menu_button=_dashboard_menu_button(url),
+                )
+            except Exception:
+                logger.exception("setChatMenuButton 실패")
 
     async def _poll_once(self) -> None:
         assert self.client is not None
@@ -189,30 +278,46 @@ class TelegramBotWorker:
                 )
                 return
             mark_bot_linked(data_root, user_id, telegram_user_id=tg_id, chat_id=chat_id)
+            from worklog_agent.web.journal_ask import clear_chat_memory
+
+            clear_chat_memory(root)
+            await self._setup_dashboard_entry(chat_id)
+            welcome_markup = None if _is_https_url(self.config.public_dashboard_url) else _dashboard_reply_keyboard()
             await self.client.send_message(
                 chat_id,
                 "일지 비서와 연결되었습니다. 일지를 묻거나 「어제 일지 생성해줘」라고 말해 보세요.",
+                reply_markup=welcome_markup,
             )
             return
         user_id = resolve_account_by_telegram_id(data_root, tg_id)
         if user_id:
             mark_bot_linked(data_root, user_id, telegram_user_id=tg_id, chat_id=chat_id)
+            await self._setup_dashboard_entry(chat_id)
+            welcome_markup = None if _is_https_url(self.config.public_dashboard_url) else _dashboard_reply_keyboard()
             await self.client.send_message(
                 chat_id,
                 "다시 오신 것을 환영합니다. 일지를 묻거나 오늘/어제 일지 생성을 요청해 보세요.",
+                reply_markup=welcome_markup,
             )
             return
 
+        await self._setup_dashboard_entry(chat_id)
+        welcome_markup = None if _is_https_url(self.config.public_dashboard_url) else _dashboard_reply_keyboard()
         await self.client.send_message(
             chat_id,
             "아직 대시보드 계정과 연결되지 않았습니다.\n"
             "1) 대시보드에서 텔레그램(수집) 연동\n"
             "2) 일지 화면 챗봇 헤더의 텔레그램 바로가기로 연결\n"
             "을 진행해 주세요.",
+            reply_markup=welcome_markup,
         )
 
     async def _handle_text(self, *, chat_id: int, tg_id: int, text: str) -> None:
         assert self.client is not None
+        if text.strip() == DASHBOARD_KEYBOARD_LABEL:
+            url = self.config.public_dashboard_url
+            await self.client.send_message(chat_id, f"대시보드: {url}")
+            return
         user_id = resolve_account_by_telegram_id(self.config.data_root, tg_id)
         if not user_id:
             await self.client.send_message(
@@ -229,7 +334,11 @@ class TelegramBotWorker:
                 chat_id=chat_id,
             )
         try:
-            result = await answer_journal_question(cfg, text)
+            result = await _run_while_typing(
+                self.client,
+                chat_id,
+                answer_journal_question(cfg, text),
+            )
         except Exception as exc:  # noqa: BLE001
             logger.exception("봇 일지 질의 실패")
             await self.client.send_message(chat_id, f"질의에 실패했습니다: {exc}")
@@ -272,6 +381,7 @@ class TelegramBotWorker:
             await self.client.answer_callback_query(callback_id, "계정 연결이 필요합니다.")
             return
         await self.client.answer_callback_query(callback_id, "생성을 시작합니다…")
+        await self.client.send_chat_action(chat_id, "typing")
         cfg = user_config(self.config, user_id)
         prefs = load_user_preferences(cfg.data_root)
         generate_type = str(prefs.get("generate_type") or "combined")

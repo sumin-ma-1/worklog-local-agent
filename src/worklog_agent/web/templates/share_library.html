@@ -6,7 +6,7 @@
   <title>Worklog · {% if shared_by %}{{ shared_by }}의 공유 일지{% else %}공유 일지{% endif %}</title>
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=attach-arrow-1">
+  <link rel="stylesheet" href="/static/dashboard.css?v=flat-gap-1">
 </head>
 <body class="share-mode">
   <script>document.documentElement.classList.add("share-page");</script>
@@ -40,6 +40,10 @@
           <div id="share-calendar" class="journal-calendar" aria-label="공유 일지 달력"></div>
         </div>
         <div class="panel share-library-list-panel">
+          <div class="search-field journal-search-field" id="share-search-wrap">
+            <input id="share-journal-filter" type="search" placeholder="날짜 검색" autocomplete="off">
+            <span class="material-symbols-outlined search-field-icon" aria-hidden="true">search</span>
+          </div>
           <div class="list-scroll-wrap" id="share-list-wrap">
             <div class="list-scroll" id="share-list-scroll">
               <ul id="share-journal-list" class="list explorer-list" aria-label="공유 일지 목록"></ul>
@@ -67,6 +71,7 @@
     let selectedView = "all";
     let currentMarkdown = "";
     let toastTimer = null;
+    let journalFilter = "";
     let calendarMonth = (() => {
       const seed = JOURNALS[0]?.date || "";
       const match = /^(\d{4})-(\d{2})/.exec(seed);
@@ -344,9 +349,67 @@
       });
     }
 
+    function filterShareJournals(items, query) {
+      const q = String(query || "").trim().toLowerCase();
+      if (!q) return items;
+      return items.filter((item) => {
+        const parts = [item.date];
+        const parsed = parseDay(item.date);
+        if (parsed) {
+          parts.push(
+            `${parsed.y}년`,
+            `${parsed.m}월`,
+            `${parsed.d}일`,
+            `${parsed.m}/${parsed.d}`,
+            weekdayLabel(parsed.y, parsed.m, parsed.d)
+          );
+        }
+        return parts.join(" ").toLowerCase().includes(q);
+      });
+    }
+
+    function renderFlatList(items) {
+      const list = document.getElementById("share-journal-list");
+      if (!list) return;
+      list.classList.remove("explorer-list");
+      list.classList.add("journal-flat-list");
+      if (!items.length) {
+        list.innerHTML = `<li class="empty">검색 결과가 없습니다.</li>`;
+        scheduleShareFades();
+        return;
+      }
+      list.innerHTML = items
+        .map((item) => {
+          const parsed = parseDay(item.date);
+          const dayLabel = parsed
+            ? `${item.date} (${weekdayLabel(parsed.y, parsed.m, parsed.d)})`
+            : item.date;
+          const selected = item.date === selectedDay ? " selected" : "";
+          return `
+            <li class="journal-flat-item">
+              <button type="button" class="journal-flat-row link${selected}" data-date="${escapeHtml(item.date)}">
+                <span class="material-symbols-outlined journal-flat-icon" aria-hidden="true">description</span>
+                <span class="journal-flat-label">
+                  <strong>${escapeHtml(dayLabel)}</strong>
+                  <span class="meta">첨부 ${item.attachments || 0}</span>
+                </span>
+              </button>
+            </li>`;
+        })
+        .join("");
+      scheduleShareFades();
+    }
+
     function renderList() {
       const list = document.getElementById("share-journal-list");
       if (!list) return;
+      const filter = String(journalFilter || "").trim();
+      if (filter) {
+        renderFlatList(filterShareJournals(JOURNALS, filter));
+        return;
+      }
+      list.classList.remove("journal-flat-list");
+      list.classList.add("explorer-list");
       if (!JOURNALS.length) {
         list.innerHTML = `<li class="empty">공유된 일지가 없습니다.</li>`;
         scheduleShareFades();
@@ -658,6 +721,10 @@
       const dayBtn = event.target.closest?.("[data-date]");
       if (!dayBtn?.dataset.date) return;
       openDay(dayBtn.dataset.date);
+    });
+    document.getElementById("share-journal-filter")?.addEventListener("input", (event) => {
+      journalFilter = event.target.value || "";
+      renderList();
     });
     document.getElementById("share-list-scroll")?.addEventListener("scroll", updateShareFades, { passive: true });
     window.addEventListener("resize", scheduleShareFades);

@@ -137,3 +137,25 @@ async def test_bot_generate_sends_keyboard(tmp_path: Path) -> None:
     kwargs = worker.client.send_message.await_args.kwargs
     assert "reply_markup" in kwargs
     assert kwargs["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "gen:2026-09-16"
+
+
+@pytest.mark.asyncio
+async def test_bot_dashboard_keyboard_sends_link(tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    mark_bot_linked(data_root, "u1", telegram_user_id=3, chat_id=3)
+    config = AppConfig(storage=StorageConfig(root=str(data_root)))
+    worker = TelegramBotWorker(config, lambda _uid: UserRuntime())
+    worker.client = MagicMock()
+    worker.client.send_message = AsyncMock(return_value={})
+
+    await worker.handle_update(
+        {
+            "update_id": 4,
+            "message": {
+                "chat": {"id": 3, "type": "private"},
+                "from": {"id": 3},
+                "text": "대시보드",
+            },
+        }
+    )
+    assert worker.client.send_message.await_args.args[1].startswith("대시보드:")

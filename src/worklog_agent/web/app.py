@@ -1130,6 +1130,65 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             )
         return {"journals": items}
 
+    @app.get("/api/journals/search")
+    async def search_journals(request: Request, q: str = Query(default="")) -> dict:
+        """날짜·일지 본문·방 제목에서 검색 (리스트 뷰용)."""
+        _, cfg = require_telegram(request)
+        query = str(q or "").strip().lower()
+        if len(query) < 1:
+            return {"journals": [], "query": q}
+        storage = Storage(cfg.data_root)
+        dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
+        hits: list[dict] = []
+        for day in dates:
+            haystacks: list[str] = [day]
+            parsed = day.split("-")
+            if len(parsed) == 3:
+                y, m, d = parsed
+                haystacks.extend(
+                    [
+                        f"{int(m)}월",
+                        f"{int(d)}일",
+                        f"{y}년",
+                        f"{int(m)}/{int(d)}",
+                    ]
+                )
+            rooms = storage.list_room_journals(day)
+            for room in rooms:
+                title = str(room.get("title") or "").strip()
+                if title:
+                    haystacks.append(title)
+            if storage.journal_path(day).exists():
+                try:
+                    haystacks.append((storage.read_journal(day) or "")[:4000])
+                except Exception:
+                    pass
+            for room in rooms[:12]:
+                try:
+                    body = storage.read_room_journal(day, room["id"]) or ""
+                except FileNotFoundError:
+                    continue
+                if body:
+                    haystacks.append(body[:2000])
+            blob = "\n".join(haystacks).lower()
+            if query not in blob:
+                continue
+            share = share_for_day(cfg.data_root, day)
+            hits.append(
+                {
+                    "date": day,
+                    "has_journal": storage.has_any_journal(day),
+                    "has_combined": storage.journal_path(day).exists(),
+                    "room_count": len(rooms),
+                    "has_daily": storage.daily_path(day).exists(),
+                    "attachments": len(storage.list_attachments(day)),
+                    "share_token": share["token"] if share else None,
+                }
+            )
+            if len(hits) >= 80:
+                break
+        return {"journals": hits, "query": q}
+
     @app.get("/api/journals/{day}")
     async def journal_detail(
         request: Request,

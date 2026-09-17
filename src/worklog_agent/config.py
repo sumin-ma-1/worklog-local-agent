@@ -17,6 +17,7 @@ class EnvSettings(BaseSettings):
     telegram_bot_token: str | None = None
     ollama_host: str | None = None
     ollama_model: str | None = None
+    dashboard_url: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -31,6 +32,7 @@ class EnvSettings(BaseSettings):
         "telegram_bot_token",
         "ollama_host",
         "ollama_model",
+        "dashboard_url",
         mode="before",
     )
     @classmethod
@@ -79,10 +81,17 @@ class AppConfig(BaseModel):
     env: EnvSettings = Field(default_factory=EnvSettings)
     config_path: Path = Path("config.yaml")
     env_path: Path = Path(".env")
+    # 텔레그램 봇 「대시보드 열기」 링크 (미설정 시 env DASHBOARD_URL 또는 localhost)
+    dashboard_url: str = "http://127.0.0.1:8787"
 
     @property
     def data_root(self) -> Path:
         return Path(self.storage.root).expanduser().resolve()
+
+    @property
+    def public_dashboard_url(self) -> str:
+        raw = str(self.env.dashboard_url or self.dashboard_url or "").strip()
+        return raw.rstrip("/") or "http://127.0.0.1:8787"
 
 
 def resolve_env_path(config_path: Path) -> Path:
@@ -121,6 +130,7 @@ _ENV_KEYS = (
     "TELEGRAM_BOT_TOKEN",
     "OLLAMA_HOST",
     "OLLAMA_MODEL",
+    "DASHBOARD_URL",
 )
 
 

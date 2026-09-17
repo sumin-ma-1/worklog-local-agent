@@ -1164,10 +1164,9 @@ main {
   background: rgba(42, 171, 238, 0.12);
 }
 
-.journal-chat-bot-link .material-symbols-outlined {
-  font-size: 18px;
-  font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 20;
-  line-height: 1;
+.journal-chat-bot-link .telegram-logo {
+  display: block;
+  flex: 0 0 auto;
 }
 
 .journal-chat-body {
@@ -1413,6 +1412,20 @@ main {
   min-height: 0;
   padding: 14px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.journal-list-panel .journal-search-field {
+  flex: 0 0 auto;
+  margin-bottom: 10px;
+}
+
+.journal-list-panel > .list-scroll-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
 }
 
 .journal-calendar-panel.panel,
@@ -1421,10 +1434,75 @@ main {
   min-height: 0;
 }
 
-.journal-list-panel > .list-scroll-wrap {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
+.journal-flat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+
+.list.journal-flat-list > .journal-flat-item,
+.journal-flat-list > .journal-flat-item {
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--line);
+  display: block;
+  gap: 0;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.list.journal-flat-list > .journal-flat-item:last-child,
+.journal-flat-list > .journal-flat-item:last-child {
+  border-bottom: 0;
+}
+
+/* .list button.link { padding:0 } 보다 우선 */
+.list.journal-flat-list .journal-flat-row.link,
+.journal-flat-list .journal-flat-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.list.journal-flat-list .journal-flat-row.link:hover,
+.list.journal-flat-list .journal-flat-row.link.selected,
+.journal-flat-list .journal-flat-row:hover,
+.journal-flat-list .journal-flat-row.selected {
+  background: color-mix(in srgb, var(--accent, #2563eb) 10%, transparent);
+  color: inherit;
+}
+
+.journal-flat-icon {
+  font-size: 18px;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.journal-flat-label {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.journal-flat-label strong {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.journal-flat-label .meta {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .journal-detail-panel {
@@ -2332,7 +2410,6 @@ input[type="text"],
 input:not([type]),
 input[type="date"],
 input[type="password"],
-#dialog-filter,
 #chat-id-input,
 #api-id-input,
 #api-hash-input,
@@ -2463,13 +2540,39 @@ button[type="submit"]:disabled,
   margin-bottom: 10px;
 }
 
-.search-field input {
-  padding-right: 36px;
+.search-field input,
+.search-field input[type="search"],
+.search-field input[type="text"],
+.search-field #watched-filter,
+.search-field #dialog-filter,
+.search-field #journal-filter,
+.search-field #share-journal-filter {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 7px 38px 7px 14px;
+  color: var(--ink);
+  box-sizing: border-box;
+}
+
+.search-field input::placeholder,
+.search-field #watched-filter::placeholder,
+.search-field #dialog-filter::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+.search-field input:focus,
+.search-field #watched-filter:focus,
+.search-field #dialog-filter:focus {
+  outline: 2px solid #93c5fd;
+  border-color: #60a5fa;
 }
 
 .search-field-icon {
   position: absolute;
-  right: 10px;
+  right: 14px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 18px;
@@ -4361,6 +4464,12 @@ body.share-mode.share-day {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.share-library-list-panel .journal-search-field,
+.share-library-list-panel .search-field {
+  flex: 0 0 auto;
+  margin-bottom: 10px;
 }
 
 .share-library-list-panel > .list-scroll-wrap {

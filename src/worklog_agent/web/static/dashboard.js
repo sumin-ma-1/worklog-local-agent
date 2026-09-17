@@ -11,6 +11,8 @@ const state = {
   authMode: "login",
   pendingRegistration: false,
   journals: [],
+  journalFilter: "",
+  journalSearchHits: null,
   journalSelected: null,
   journalView: "all",
   calendarMonth: null,
@@ -1029,9 +1031,87 @@ function panelEmptyHtml({ src, title, hint = "", size = 160 } = {}) {
   </li>`;
 }
 
+function journalSearchHaystack(item) {
+  const parts = [item.date];
+  const parsed = parseDay(item.date);
+  if (parsed) {
+    parts.push(
+      `${parsed.y}년`,
+      `${parsed.m}월`,
+      `${parsed.d}일`,
+      `${parsed.m}/${parsed.d}`,
+      weekdayLabel(parsed.y, parsed.m, parsed.d)
+    );
+  }
+  return parts.join(" ").toLowerCase();
+}
+
+function filterJournalsLocal(items, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return items;
+  return items.filter((item) => journalSearchHaystack(item).includes(q));
+}
+
+function renderJournalFlatList(items, { emptyTitle, emptyHint } = {}) {
+  const list = $("#journal-list");
+  if (!list) return;
+  if (!items.length) {
+    list.classList.remove("explorer-list");
+    list.classList.add("journal-flat-list");
+    list.innerHTML = panelEmptyHtml({
+      src: "/static/worklog-list.png",
+      title: emptyTitle || "검색 결과 없음",
+      hint: emptyHint || "다른 날짜나 키워드로 검색해 보세요.",
+      size: 160,
+    });
+    updateJournalScrollFade();
+    return;
+  }
+  list.classList.remove("explorer-list");
+  list.classList.add("journal-flat-list");
+  list.innerHTML = items
+    .map((item) => {
+      const parsed = parseDay(item.date);
+      const dayLabel = parsed
+        ? `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")} (${weekdayLabel(parsed.y, parsed.m, parsed.d)})`
+        : item.date;
+      const selected = item.date === state.journalSelected ? " selected" : "";
+      const bits = [];
+      if (item.room_count) bits.push(`방 ${item.room_count}`);
+      bits.push(`첨부 ${item.attachments || 0}`);
+      return `
+        <li class="journal-flat-item">
+          <button type="button" class="journal-flat-row link${selected}" data-date="${item.date}">
+            <span class="material-symbols-outlined journal-flat-icon" aria-hidden="true">description</span>
+            <span class="journal-flat-label">
+              <strong>${escapeHtml(dayLabel)}</strong>
+              <span class="meta">${escapeHtml(bits.join(" · "))}</span>
+            </span>
+          </button>
+        </li>`;
+    })
+    .join("");
+  list.querySelectorAll("button[data-date]").forEach((btn) => {
+    btn.addEventListener("click", () => loadJournal(btn.dataset.date));
+  });
+  updateJournalScrollFade();
+}
+
 function renderJournalList() {
   const list = $("#journal-list");
   if (!list) return;
+  const filter = String(state.journalFilter || "").trim();
+  if (filter) {
+    const hits = Array.isArray(state.journalSearchHits)
+      ? state.journalSearchHits
+      : filterJournalsLocal(state.journals, filter);
+    renderJournalFlatList(hits, {
+      emptyTitle: "검색 결과 없음",
+      emptyHint: `"${filter}"에 맞는 일지가 없습니다.`,
+    });
+    return;
+  }
+  list.classList.remove("journal-flat-list");
   if (!state.journals.length) {
     list.classList.remove("explorer-list");
     list.innerHTML = panelEmptyHtml({
@@ -1122,6 +1202,36 @@ function renderJournalList() {
   list.querySelectorAll("button[data-date]").forEach((btn) => {
     btn.addEventListener("click", () => loadJournal(btn.dataset.date));
   });
+  updateJournalScrollFade();
+}
+
+let journalSearchTimer = null;
+async function runJournalSearch(query) {
+  const q = String(query || "").trim();
+  state.journalFilter = q;
+  if (!q) {
+    state.journalSearchHits = null;
+    renderJournalList();
+    return;
+  }
+  // 즉시 날짜 로컬 필터, 이어서 본문 검색 결과로 교체
+  state.journalSearchHits = filterJournalsLocal(state.journals, q);
+  renderJournalList();
+  if (!state.authorized) return;
+  try {
+    const data = await api(`/api/journals/search?q=${encodeURIComponent(q)}`);
+    if (String(state.journalFilter || "").trim() !== q) return;
+    state.journalSearchHits = Array.isArray(data.journals) ? data.journals : [];
+    renderJournalList();
+  } catch (_) {
+    /* keep local hits */
+  }
+}
+
+function scheduleJournalSearch(query) {
+  state.journalFilter = String(query || "");
+  if (journalSearchTimer) clearTimeout(journalSearchTimer);
+  journalSearchTimer = setTimeout(() => runJournalSearch(state.journalFilter), 220);
 }
 
 function renderJournalCalendar() {
@@ -1837,6 +1947,16 @@ async function submitJournalChat(question) {
     if (pending) pending.remove();
     if (data.intent === "generate" && data.generate?.dates?.length) {
       appendJournalChatGenerateConfirm(data.answer, data.generate);
+      return;
+    }
+    if (data.intent === "watch") {
+      appendJournalChatMessage("bot", data.answer || "수집 대상을 갱신했습니다.");
+      loadWatched().catch(() => {});
+      return;
+    }
+    if (data.intent === "schedule") {
+      appendJournalChatMessage("bot", data.answer || "예약을 갱신했습니다.");
+      loadSchedules().catch(() => {});
       return;
     }
     const day = Array.isArray(data.days) && data.days[0] ? data.days[0] : null;
@@ -3313,6 +3433,16 @@ $("#watched-filter")?.addEventListener("input", (event) => {
   renderWatched();
 });
 
+$("#journal-filter")?.addEventListener("input", (event) => {
+  const value = event.target.value || "";
+  if (!state.journalLayout.showList) {
+    state.journalLayout.showList = true;
+    applyJournalLayout();
+    persistJournalLayout();
+  }
+  scheduleJournalSearch(value);
+});
+
 $("#account-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const username = $("#username-input")?.value.trim() || "";
@@ -3959,10 +4089,22 @@ $("#schedule-list")?.addEventListener("click", async (event) => {
 
 setAuthMode("login");
 loadOverview()
-  .then(() => {
+  .then(async () => {
     if (state.authorized) {
       setView("journals");
-      loadJournals();
+      const params = new URLSearchParams(window.location.search);
+      const day = params.get("day");
+      await loadJournals(day || undefined);
+      if (day) {
+        try {
+          await loadJournal(day);
+        } catch (err) {
+          showBanner(err.message, "error");
+        }
+        params.delete("day");
+        const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash || ""}`;
+        window.history.replaceState({}, "", next);
+      }
       pollJob();
     }
   })

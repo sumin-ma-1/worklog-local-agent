@@ -224,6 +224,18 @@ def test_journal_update_and_delete(tmp_path: Path) -> None:
     assert not (data_root / "journals" / "2026-07-28.md").exists()
 
 
+def test_journal_search_by_content(tmp_path: Path) -> None:
+    client, _state, _user_id = _authed_linked_client(tmp_path)
+    assert client.put("/api/journals/2026-05-01", json={"markdown": "# 금형 과제 회의"}).status_code == 200
+    assert client.put("/api/journals/2026-05-02", json={"markdown": "# 배포 점검"}).status_code == 200
+    hit = client.get("/api/journals/search", params={"q": "금형"})
+    assert hit.status_code == 200
+    dates = [row["date"] for row in hit.json()["journals"]]
+    assert dates == ["2026-05-01"]
+    by_date = client.get("/api/journals/search", params={"q": "5월"})
+    assert "2026-05-01" in [row["date"] for row in by_date.json()["journals"]]
+
+
 def test_users_are_isolated(tmp_path: Path) -> None:
     config_path = _write_config(tmp_path / "config.yaml", tmp_path / "data")
     _write_env(tmp_path / ".env")

@@ -1,5 +1,7 @@
 # 복사: cp config.example.yaml config.yaml
 timezone: Asia/Seoul
+# 텔레그램 봇의 「대시보드 열기」 링크 (원격 접속 시 실제 URL로 변경)
+# dashboard_url: http://127.0.0.1:8787
 
 telegram:
   session_name: worklog

@@ -7,7 +7,7 @@
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" sizes="180x180">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=tg-bot-1">
+  <link rel="stylesheet" href="/static/dashboard.css?v=flat-gap-1">
 </head>
 <body class="login-mode">
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
@@ -181,6 +181,10 @@
               <button type="button" class="layout-panel-hide" data-hide-panel="list" title="리스트 숨기기" aria-label="리스트 숨기기">
                 <span class="material-symbols-outlined" aria-hidden="true">close</span>
               </button>
+              <div class="search-field journal-search-field" id="journal-search-wrap">
+                <input id="journal-filter" type="search" placeholder="날짜·내용 검색" autocomplete="off">
+                <span class="material-symbols-outlined search-field-icon" aria-hidden="true">search</span>
+              </div>
               <div class="list-scroll-wrap" id="journal-list-wrap">
                 <div class="list-scroll" id="journal-list-scroll">
                   <ul id="journal-list" class="list"></ul>
@@ -200,9 +204,11 @@
         <div id="journal-chat-panel" class="journal-chat-panel hidden" aria-hidden="true">
           <div class="journal-chat-head">
             <div class="journal-chat-head-title">
-              <strong>일지 에이전트</strong>
+              <strong>Worklog 에이전트</strong>
               <a id="journal-chat-bot-link" class="journal-chat-bot-link hidden" href="#" target="_blank" rel="noopener noreferrer" title="텔레그램 봇 열기" aria-label="텔레그램 봇 열기">
-                <span class="material-symbols-outlined" aria-hidden="true">send</span>
+                <svg class="telegram-logo" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+                  <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8-1.56 7.36c-.12.54-.43.67-.87.42l-2.4-1.77-1.16 1.12c-.13.13-.24.24-.49.24l.17-2.45 4.47-4.04c.19-.17-.04-.27-.3-.1l-5.52 3.48-2.38-.74c-.52-.16-.53-.52.11-.77l9.3-3.58c.43-.16.81.1.67.73z"/>
+                </svg>
               </a>
             </div>
             <button type="button" id="journal-chat-close" class="icon-btn" title="닫기" aria-label="닫기">
@@ -260,7 +266,7 @@
               </div>
             </div>
             <div id="watched-search-wrap" class="search-field hidden">
-              <input id="watched-filter" placeholder="제목 또는 ID 검색" autocomplete="off">
+              <input id="watched-filter" type="search" placeholder="제목 또는 ID 검색" autocomplete="off">
               <span class="material-symbols-outlined search-field-icon" aria-hidden="true">search</span>
             </div>
             <div class="list-scroll-wrap" id="watched-scroll-wrap">
@@ -282,7 +288,7 @@
               </div>
             </div>
             <div class="search-field">
-              <input id="dialog-filter" placeholder="제목 또는 ID 검색" autocomplete="off">
+              <input id="dialog-filter" type="search" placeholder="제목 또는 ID 검색" autocomplete="off">
               <span class="material-symbols-outlined search-field-icon" aria-hidden="true">search</span>
             </div>
             <div class="list-scroll-wrap" id="dialog-scroll-wrap">
@@ -658,6 +664,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-  <script src="/static/dashboard.js?v=tg-bot-1"></script>
+  <script src="/static/dashboard.js?v=flat-gap-1"></script>
 </body>
 </html>
