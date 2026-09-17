@@ -3200,7 +3200,6 @@ button[type="submit"]:disabled,
 }
 
 .settings-row-input input[type="text"],
-.settings-row-input input[type="time"],
 .settings-row-input select {
   width: auto !important;
   max-width: 14rem;
@@ -3216,37 +3215,38 @@ button[type="submit"]:disabled,
   text-align: right;
   outline: none !important;
   box-shadow: none !important;
-}
-
-.settings-row-input input[type="text"],
-.settings-row-input select {
   appearance: none;
   -webkit-appearance: none;
 }
 
-.settings-row-input input[type="time"] {
-  position: relative;
-  min-width: 5.5rem;
-  cursor: pointer;
-  /* Safari: keep native time UI; appearance:none hides the picker */
-  appearance: auto;
-  -webkit-appearance: auto;
+.settings-row-input .schedule-time-fields {
+  gap: 2px;
 }
 
-.settings-row-input .settings-trailing:has(> input[type="time"]) {
-  position: relative;
-  min-height: 1.35em;
+.settings-row-input .schedule-time-fields select {
+  max-width: 3.75rem;
+  min-width: 3rem;
+  text-align: center;
+  text-align-last: center;
+  cursor: pointer;
+  /* Safari needs native select chrome to open the picker */
+  appearance: menulist !important;
+  -webkit-appearance: menulist !important;
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  padding: 0 4px !important;
 }
 
-.settings-row-input input[type="time"]::-webkit-calendar-picker-indicator {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  opacity: 0;
-  cursor: pointer;
+.settings-row-input .schedule-time-sep {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1;
+  padding: 0 1px;
 }
 
 .settings-row-input input[type="text"]::placeholder {
@@ -3259,7 +3259,6 @@ button[type="submit"]:disabled,
 }
 
 .settings-row-input input[type="text"]:focus,
-.settings-row-input input[type="time"]:focus,
 .settings-row-input select:focus {
   outline: none !important;
   border: 0 !important;

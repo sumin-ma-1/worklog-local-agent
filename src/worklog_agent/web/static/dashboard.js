@@ -2827,6 +2827,51 @@ function selectScheduleTarget(target) {
   closeSettingsMenus();
 }
 
+function padScheduleTimePart(value) {
+  return String(value ?? "0").padStart(2, "0");
+}
+
+function selectedScheduleTime() {
+  const hour = padScheduleTimePart($("#schedule-time-hour")?.value || "21");
+  const minute = padScheduleTimePart($("#schedule-time-minute")?.value || "00");
+  return `${hour}:${minute}`;
+}
+
+function syncScheduleTimeHidden() {
+  const hidden = $("#schedule-time");
+  if (hidden) hidden.value = selectedScheduleTime();
+}
+
+function setScheduleTime(value) {
+  const match = /^(\d{1,2}):(\d{2})/.exec(String(value || "").trim());
+  const hour = padScheduleTimePart(Math.min(23, Math.max(0, Number(match?.[1] ?? 21))));
+  const minute = padScheduleTimePart(Math.min(59, Math.max(0, Number(match?.[2] ?? 0))));
+  const hourEl = $("#schedule-time-hour");
+  const minuteEl = $("#schedule-time-minute");
+  if (hourEl) hourEl.value = hour;
+  if (minuteEl) minuteEl.value = minute;
+  syncScheduleTimeHidden();
+}
+
+function initScheduleTimeSelects() {
+  const hourEl = $("#schedule-time-hour");
+  const minuteEl = $("#schedule-time-minute");
+  if (!hourEl || !minuteEl) return;
+  if (!hourEl.options.length) {
+    hourEl.innerHTML = Array.from({ length: 24 }, (_, hour) => {
+      const value = padScheduleTimePart(hour);
+      return `<option value="${value}">${value}</option>`;
+    }).join("");
+  }
+  if (!minuteEl.options.length) {
+    minuteEl.innerHTML = Array.from({ length: 60 }, (_, minute) => {
+      const value = padScheduleTimePart(minute);
+      return `<option value="${value}">${value}</option>`;
+    }).join("");
+  }
+  setScheduleTime($("#schedule-time")?.value || "21:00");
+}
+
 function selectedScheduleGenerateType() {
   return $("#schedule-generate-type")?.value || "combined";
 }
@@ -4139,6 +4184,9 @@ syncRunGenerateTypeSummary();
 syncScheduleTargetSummary();
 syncScheduleGenerateTypeSummary();
 syncSchedulePolicySummary();
+initScheduleTimeSelects();
+$("#schedule-time-hour")?.addEventListener("change", syncScheduleTimeHidden);
+$("#schedule-time-minute")?.addEventListener("change", syncScheduleTimeHidden);
 syncRunPreferenceSummaries();
 setRunMode(runMode || "single");
 
@@ -4275,9 +4323,10 @@ $("#schedule-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
     const name = $("#schedule-name")?.value?.trim();
-    const time = $("#schedule-time")?.value;
+    syncScheduleTimeHidden();
+    const time = selectedScheduleTime();
     if (!name) throw new Error("예약 이름을 입력하세요.");
-    if (!time) throw new Error("실행 시각을 선택하세요.");
+    if (!/^\d{2}:\d{2}$/.test(time)) throw new Error("실행 시각을 선택하세요.");
     await api("/api/schedules", {
       method: "POST",
       body: JSON.stringify({
