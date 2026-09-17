@@ -747,6 +747,52 @@ main {
 #view-journals.is-layout-editing .journal-list-panel {
   outline: 2px dashed rgba(30, 58, 138, 0.35);
   outline-offset: -2px;
+  animation: layout-panel-jiggle 0.45s ease-in-out infinite;
+  transform-origin: center center;
+  will-change: transform;
+  cursor: grab;
+}
+
+#view-journals.is-layout-editing .journal-calendar-panel:nth-child(2),
+#view-journals.is-layout-editing .journal-list-panel:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+#view-journals.is-layout-editing .journal-browse.is-list-first .journal-list-panel {
+  animation-delay: 0s;
+}
+
+#view-journals.is-layout-editing .journal-browse.is-list-first .journal-calendar-panel {
+  animation-delay: 0.08s;
+}
+
+#view-journals.is-layout-editing .journal-calendar-panel:active,
+#view-journals.is-layout-editing .journal-list-panel:active {
+  cursor: grabbing;
+  animation: none;
+}
+
+@keyframes layout-panel-jiggle {
+  0%,
+  100% {
+    transform: rotate(-0.55deg) translateY(0);
+  }
+  25% {
+    transform: rotate(0.55deg) translateY(-0.5px);
+  }
+  50% {
+    transform: rotate(-0.4deg) translateY(0.5px);
+  }
+  75% {
+    transform: rotate(0.45deg) translateY(-0.5px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #view-journals.is-layout-editing .journal-calendar-panel,
+  #view-journals.is-layout-editing .journal-list-panel {
+    animation: none;
+  }
 }
 
 #view-journals.is-layout-editing .journal-browse {
