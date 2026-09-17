@@ -263,13 +263,131 @@ function bindAuthSwitchers() {
 
 bindAuthSwitchers();
 
+const PHONE_COUNTRIES = [
+  { dial: "+82", iso: "kr", name: "한국" },
+  { dial: "+81", iso: "jp", name: "일본" },
+  { dial: "+1", iso: "us", name: "미국/캐나다" },
+  { dial: "+86", iso: "cn", name: "중국" },
+  { dial: "+852", iso: "hk", name: "홍콩" },
+  { dial: "+886", iso: "tw", name: "대만" },
+  { dial: "+65", iso: "sg", name: "싱가포르" },
+  { dial: "+66", iso: "th", name: "태국" },
+  { dial: "+84", iso: "vn", name: "베트남" },
+  { dial: "+62", iso: "id", name: "인도네시아" },
+  { dial: "+63", iso: "ph", name: "필리핀" },
+  { dial: "+91", iso: "in", name: "인도" },
+  { dial: "+44", iso: "gb", name: "영국" },
+  { dial: "+49", iso: "de", name: "독일" },
+  { dial: "+33", iso: "fr", name: "프랑스" },
+  { dial: "+61", iso: "au", name: "호주" },
+];
+
+const PHONE_COUNTRY_CODES = [...PHONE_COUNTRIES.map((item) => item.dial)].sort(
+  (a, b) => b.length - a.length
+);
+
+function flagUrl(iso) {
+  return `https://flagcdn.com/w40/${iso}.png`;
+}
+
+function findPhoneCountry(dial) {
+  return PHONE_COUNTRIES.find((item) => item.dial === dial) || PHONE_COUNTRIES[0];
+}
+
+function setLoginCountry(dial, { close = true } = {}) {
+  const country = findPhoneCountry(dial);
+  const hidden = $("#login-country-code");
+  const flag = $("#login-country-flag");
+  const dialEl = $("#login-country-dial");
+  if (hidden) hidden.value = country.dial;
+  if (flag) {
+    flag.src = flagUrl(country.iso);
+    flag.alt = country.name;
+  }
+  if (dialEl) dialEl.textContent = country.dial;
+  document.querySelectorAll(".phone-country-option").forEach((btn) => {
+    btn.classList.toggle("is-selected", btn.dataset.dial === country.dial);
+  });
+  if (close) setCountryMenuOpen(false);
+}
+
+function setCountryMenuOpen(open) {
+  const menu = $("#login-country-menu");
+  const trigger = $("#login-country-trigger");
+  if (!menu || !trigger) return;
+  menu.classList.toggle("hidden", !open);
+  trigger.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function initPhoneCountryPicker() {
+  const menu = $("#login-country-menu");
+  const trigger = $("#login-country-trigger");
+  if (!menu || !trigger || menu.dataset.ready === "1") return;
+  menu.dataset.ready = "1";
+  menu.innerHTML = PHONE_COUNTRIES.map(
+    (item) => `<li role="none">
+      <button type="button" class="phone-country-option" role="option" data-dial="${escapeHtml(item.dial)}" data-iso="${escapeHtml(item.iso)}">
+        <img class="phone-country-flag" src="${flagUrl(item.iso)}" alt="" width="20" height="15" decoding="async">
+        <span class="phone-country-option-name">${escapeHtml(item.name)}</span>
+        <span class="phone-country-option-dial">${escapeHtml(item.dial)}</span>
+      </button>
+    </li>`
+  ).join("");
+  menu.querySelectorAll(".phone-country-option").forEach((btn) => {
+    btn.addEventListener("click", () => setLoginCountry(btn.dataset.dial || "+82"));
+  });
+  trigger.addEventListener("click", (event) => {
+    event.preventDefault();
+    if (trigger.disabled) return;
+    setCountryMenuOpen(menu.classList.contains("hidden"));
+  });
+  document.addEventListener("click", (event) => {
+    const root = $("#login-country-picker");
+    if (!root || root.contains(event.target)) return;
+    setCountryMenuOpen(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setCountryMenuOpen(false);
+  });
+  setLoginCountry($("#login-country-code")?.value || "+82", { close: true });
+}
+
+function fillPhoneFields(phone) {
+  const input = $("#login-phone-input");
+  if (!input) return;
+  const raw = String(phone || "").trim();
+  if (!raw) return;
+  const digits = raw.replace(/[^\d+]/g, "");
+  const withPlus = digits.startsWith("+") ? digits : digits ? `+${digits}` : "";
+  if (!withPlus) {
+    input.value = raw;
+    return;
+  }
+  const match = PHONE_COUNTRY_CODES.find((code) => withPlus.startsWith(code));
+  if (match) {
+    setLoginCountry(match, { close: true });
+    input.value = withPlus.slice(match.length);
+    return;
+  }
+  input.value = withPlus.replace(/^\+/, "");
+}
+
+function buildLoginPhone() {
+  const dial = ($("#login-country-code")?.value || "+82").trim();
+  let national = ($("#login-phone-input")?.value || "").replace(/\D/g, "");
+  if (!national) return "";
+  if (national.startsWith("0")) national = national.slice(1);
+  return `${dial}${national}`;
+}
+
 function showTelegramPanel(phone) {
   state.authenticated = true;
   $("#auth-account-panel")?.classList.add("hidden");
   $("#auth-telegram-panel")?.classList.remove("hidden");
   $("#auth-footer")?.classList.add("hidden");
+  initPhoneCountryPicker();
   const status = $("#login-status");
-  if (phone && $("#login-phone-input")) $("#login-phone-input").value = phone;
+  if (phone) fillPhoneFields(phone);
   renderLoginForms(state.loginStage === "authorized" ? "idle" : state.loginStage);
   const message =
     state.loginStage === "code"
@@ -1560,7 +1678,7 @@ function renderAccounts(users) {
       const journals = Number.isFinite(Number(user.journal_count)) ? String(user.journal_count) : "0";
       const action = self
         ? `<span class="meta">본인</span>`
-        : `<button type="button" class="danger icon-action" data-delete-user="${escapeHtml(user.id)}" title="삭제" aria-label="삭제"><span class="material-symbols-outlined" aria-hidden="true">delete</span></button>`;
+        : `<button type="button" class="icon-btn danger-icon" data-delete-user="${escapeHtml(user.id)}" title="삭제" aria-label="삭제"><span class="material-symbols-outlined" aria-hidden="true">delete</span></button>`;
       return `
         <tr>
           <td><strong>${escapeHtml(user.username || "")}</strong></td>
@@ -2714,13 +2832,32 @@ $("#account-form")?.addEventListener("submit", async (event) => {
 
 $("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  const phone = buildLoginPhone();
+  if (!phone) {
+    showBanner("전화번호를 입력하세요.", "error");
+    return;
+  }
+  const submit = $("#login-submit");
+  const submitLabel = submit?.querySelector(".auth-submit-label");
+  const status = $("#login-status");
+  const countryTrigger = $("#login-country-trigger");
+  const phoneInput = $("#login-phone-input");
+  const prevLabel = submitLabel?.textContent || "텔레그램 연동";
+  if (submit) submit.disabled = true;
+  if (submitLabel) submitLabel.textContent = "코드 전송 중…";
+  if (countryTrigger) countryTrigger.disabled = true;
+  setCountryMenuOpen(false);
+  if (phoneInput) phoneInput.disabled = true;
+  if (status) {
+    status.textContent = "코드 전송 중…";
+    status.classList.remove("hidden");
+  }
   try {
     const data = await api("/api/telegram/login/start", {
       method: "POST",
-      body: JSON.stringify({ phone: $("#login-phone-input").value.trim() }),
+      body: JSON.stringify({ phone }),
     });
     renderLoginForms(data.stage);
-    const status = $("#login-status");
     if (status) {
       status.textContent = data.message;
       status.classList.remove("hidden");
@@ -2728,7 +2865,16 @@ $("#login-form").addEventListener("submit", async (event) => {
     showBanner(data.message, data.stage === "authorized" ? "ok" : "info");
     if (data.stage === "authorized") await enterDashboard();
   } catch (err) {
+    if (status) {
+      status.textContent = "텔레그램 연동이 필요합니다.";
+      status.classList.remove("hidden");
+    }
     showBanner(err.message, "error");
+  } finally {
+    if (submit) submit.disabled = false;
+    if (submitLabel) submitLabel.textContent = prevLabel;
+    if (countryTrigger) countryTrigger.disabled = false;
+    if (phoneInput) phoneInput.disabled = false;
   }
 });
 

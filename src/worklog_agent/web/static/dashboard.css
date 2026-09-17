@@ -146,6 +146,108 @@ body.login-mode .app-shell {
   min-width: 0;
 }
 
+.phone-input-row {
+  gap: 10px;
+  position: relative;
+}
+
+.phone-country {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.phone-country-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 2px 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.phone-country-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.phone-country-flag {
+  width: 20px;
+  height: 15px;
+  object-fit: cover;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(15, 27, 45, 0.12);
+  flex: 0 0 auto;
+}
+
+.phone-country-dial {
+  white-space: nowrap;
+}
+
+.phone-country-caret {
+  font-size: 18px;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.phone-country-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 220px;
+  max-height: 240px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(15, 27, 45, 0.14);
+}
+
+.phone-country-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.phone-country-option:hover,
+.phone-country-option.is-selected {
+  background: #f3f6fb;
+}
+
+.phone-country-option-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.phone-country-option-dial {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.phone-input-row #login-phone-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .field-line input {
   flex: 1 1 auto;
   min-width: 0;
@@ -252,14 +354,36 @@ body.login-mode .app-shell {
   cursor: pointer;
 }
 
+.auth-submit-telegram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.auth-submit-telegram .telegram-logo {
+  flex: 0 0 auto;
+  display: block;
+}
+
 .auth-submit:hover,
 .login-screen button.auth-submit[type="submit"]:hover {
   background: var(--accent-hover);
 }
 
 .login-screen .ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   width: 100%;
   margin-top: 8px;
+}
+
+.login-screen .ghost-btn .material-symbols-outlined {
+  font-size: 18px;
+  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 20;
+  line-height: 1;
 }
 
 .auth-footer {
@@ -4017,8 +4141,36 @@ body.share-mode.share-day {
 }
 
 .accounts-actions {
-  width: 48px;
+  width: 56px;
   text-align: right;
+  vertical-align: middle;
+}
+
+.accounts-actions .meta {
+  display: inline-block;
+  margin: 0;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+
+.accounts-actions .icon-btn {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--danger);
+  opacity: 0.55;
+}
+
+.accounts-actions .icon-btn:hover {
+  background: transparent;
+  box-shadow: none;
+  color: var(--danger);
+  opacity: 0.28;
+}
+
+.accounts-actions .icon-btn .material-symbols-outlined {
+  font-size: 18px;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
 }
 
 @media print {
