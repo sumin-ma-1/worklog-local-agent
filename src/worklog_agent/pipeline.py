@@ -71,6 +71,7 @@ class Pipeline:
         *,
         generate_type: str = "combined",
         fill_missing: bool = False,
+        append_rooms: bool = False,
         on_progress: ProgressFn | None = None,
     ) -> str:
         resolved = target_day(day, self.config.timezone)
@@ -88,13 +89,16 @@ class Pipeline:
         want_combined = kind in {"combined", "both"}
         want_rooms = kind in {"per_room", "both"}
         existing_combined = self.storage.journal_path(resolved).exists()
-        existing_rooms = bool(self.storage.list_room_journals(resolved))
+        existing_room_rows = self.storage.list_room_journals(resolved)
+        existing_rooms = bool(existing_room_rows)
         if fill_missing and kind == "both":
             do_combined = not existing_combined
             do_rooms = not existing_rooms
+            rooms_append = False
         else:
             do_combined = want_combined
             do_rooms = want_rooms
+            rooms_append = bool(append_rooms and want_rooms)
 
         primary_path: str | None = None
         if existing_combined:
@@ -110,10 +114,20 @@ class Pipeline:
             primary_path = None
 
         if do_rooms:
-            self.storage.clear_room_journals(resolved)
-            rooms_meta: list[dict[str, str]] = []
-            total_rooms = len(bundle.chats) or 1
-            for index, chat in enumerate(bundle.chats, start=1):
+            existing_ids = {str(item["id"]) for item in existing_room_rows} if rooms_append else set()
+            if rooms_append:
+                chats_to_write = [chat for chat in bundle.chats if str(chat.chat_id) not in existing_ids]
+                rooms_meta = [
+                    {"id": str(item["id"]), "title": str(item["title"])}
+                    for item in existing_room_rows
+                ]
+            else:
+                self.storage.clear_room_journals(resolved)
+                chats_to_write = list(bundle.chats)
+                rooms_meta = []
+
+            total_rooms = len(chats_to_write) or 0
+            for index, chat in enumerate(chats_to_write, start=1):
                 await emit_progress(
                     on_progress,
                     f"{resolved} · 방 일지 {index}/{total_rooms}: {chat.title} ({model})",
@@ -127,7 +141,33 @@ class Pipeline:
                 rooms_meta.append({"id": str(chat.chat_id), "title": chat.title})
                 if primary_path is None:
                     primary_path = str(path)
-            self.storage.write_room_journals_index(resolved, rooms_meta)
+            # Keep index in sync even when nothing new was added.
+            if rooms_append:
+                # Refresh titles for existing rooms from current bundle when available.
+                title_by_id = {str(chat.chat_id): chat.title for chat in bundle.chats}
+                rooms_meta = [
+                    {
+                        "id": row["id"],
+                        "title": title_by_id.get(row["id"], row["title"]),
+                    }
+                    for row in rooms_meta
+                ]
+                # Ensure every existing journal file stays listed.
+                seen = {row["id"] for row in rooms_meta}
+                for row in self.storage.list_room_journals(resolved):
+                    if row["id"] not in seen:
+                        rooms_meta.append({"id": row["id"], "title": row["title"]})
+            if rooms_meta or not rooms_append:
+                self.storage.write_room_journals_index(resolved, rooms_meta)
+            elif rooms_append and existing_room_rows:
+                self.storage.write_room_journals_index(
+                    resolved,
+                    [{"id": r["id"], "title": r["title"]} for r in existing_room_rows],
+                )
+            if primary_path is None and existing_room_rows:
+                primary_path = str(
+                    self.storage.room_journal_path(resolved, existing_room_rows[0]["id"])
+                )
         elif want_rooms is False:
             self.storage.clear_room_journals(resolved)
 
@@ -155,6 +195,7 @@ class Pipeline:
         *,
         generate_type: str = "combined",
         fill_missing: bool = False,
+        append_rooms: bool = False,
         on_progress: ProgressFn | None = None,
     ) -> str:
         resolved = target_day(day, self.config.timezone)
@@ -166,6 +207,7 @@ class Pipeline:
             resolved,
             generate_type=generate_type,
             fill_missing=fill_missing,
+            append_rooms=append_rooms,
             on_progress=on_progress,
         )
         logger.info("파이프라인 완료: 수집 %s, 첨부 %s, 일지 %s", collected, archived, path)

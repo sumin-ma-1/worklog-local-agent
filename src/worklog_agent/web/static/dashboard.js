@@ -838,7 +838,12 @@ function renderAttachmentItems(attachments, { groupByChat = false } = {}) {
   }
   const parts = [];
   for (const [title, rows] of groups) {
-    parts.push(`<li class="attach-group-label">${escapeHtml(title)}</li>`);
+    parts.push(
+      `<li class="attach-group-label">
+        <span class="material-symbols-outlined attach-group-icon" aria-hidden="true">keyboard_arrow_down</span>
+        <span class="attach-group-title">${escapeHtml(title)}</span>
+      </li>`
+    );
     parts.push(...rows.map(renderFile));
   }
   return parts.join("");
@@ -1398,12 +1403,16 @@ function renderJournalDetail(data, { editing = false } = {}) {
         tabindex="0"
       ></div>`
     : "";
+  const printViewLabel =
+    views.find((item) => item.id === selectedView)?.label ||
+    (selectedView === "all" ? "통합" : selectedView);
   $("#journal-detail").innerHTML = `
     <div class="journal-detail-layout${showViewNav ? " has-view-nav" : ""}">
       ${viewNav}
       <div class="journal-detail-main">
         <div class="row-head">
           <h3>${escapeHtml(formatJournalDayTitle(data.date))}</h3>
+          <span class="journal-print-view">${escapeHtml(printViewLabel)}</span>
           <div class="journal-actions">${actions}</div>
         </div>
         ${body}
@@ -2186,6 +2195,8 @@ const PLAN_REASON_LABEL = {
   generate_type_changed: "생성 유형 변경",
   fill_combined: "통합 추가",
   fill_rooms: "방마다 추가",
+  append_rooms: "새 방만 추가",
+  stale_rooms: "통합 재생성 · 새 방 추가",
 };
 
 function setRunMode(mode) {

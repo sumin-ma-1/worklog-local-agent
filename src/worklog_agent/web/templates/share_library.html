@@ -6,7 +6,7 @@
   <title>Worklog · {% if shared_by %}{{ shared_by }}의 공유 일지{% else %}공유 일지{% endif %}</title>
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=share-updated-1">
+  <link rel="stylesheet" href="/static/dashboard.css?v=attach-arrow-1">
 </head>
 <body class="share-mode">
   <script>document.documentElement.classList.add("share-page");</script>
@@ -64,6 +64,7 @@
     const byDate = new Map(JOURNALS.map((item) => [item.date, item]));
     const explorerOpen = {};
     let selectedDay = null;
+    let selectedView = "all";
     let currentMarkdown = "";
     let toastTimer = null;
     let calendarMonth = (() => {
@@ -483,8 +484,10 @@
       });
     }
 
-    async function openDay(day) {
+    async function openDay(day, view = null) {
       selectedDay = day;
+      if (view != null) selectedView = view;
+      else selectedView = "all";
       const match = /^(\d{4})-(\d{2})/.exec(day || "");
       if (match) calendarMonth = { y: Number(match[1]), m: Number(match[2]) };
       ensurePathForDay(day);
@@ -496,30 +499,36 @@
       const detail = document.getElementById("share-detail");
       if (!detail) return;
       detail.innerHTML = `
-        <div class="row-head">
-          <h3>${escapeHtml(formatDayTitle(day))}</h3>
-          <div class="journal-actions">
-            <button type="button" id="share-day-link" class="icon-btn" title="공유 링크" aria-label="공유 링크" disabled>
-              <span class="material-symbols-outlined" aria-hidden="true">link</span>
-            </button>
-            <button type="button" id="share-day-print" class="icon-btn" title="인쇄" aria-label="인쇄" disabled>
-              <span class="material-symbols-outlined" aria-hidden="true">print</span>
-            </button>
-            <button type="button" id="share-day-copy" class="icon-btn" title="복사" aria-label="복사" disabled>
-              <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
-            </button>
-          </div>
-        </div>
-        <div class="list-scroll-wrap" id="share-detail-wrap">
-          <div class="list-scroll" id="share-detail-scroll">
-            <p class="empty">불러오는 중…</p>
+        <div class="journal-detail-layout">
+          <div class="journal-detail-main">
+            <div class="row-head">
+              <h3>${escapeHtml(formatDayTitle(day))}</h3>
+              <div class="journal-actions">
+                <button type="button" id="share-day-link" class="icon-btn" title="공유 링크" aria-label="공유 링크" disabled>
+                  <span class="material-symbols-outlined" aria-hidden="true">link</span>
+                </button>
+                <button type="button" id="share-day-print" class="icon-btn" title="인쇄" aria-label="인쇄" disabled>
+                  <span class="material-symbols-outlined" aria-hidden="true">print</span>
+                </button>
+                <button type="button" id="share-day-copy" class="icon-btn" title="복사" aria-label="복사" disabled>
+                  <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
+                </button>
+              </div>
+            </div>
+            <div class="list-scroll-wrap" id="share-detail-wrap">
+              <div class="list-scroll" id="share-detail-scroll">
+                <p class="empty">불러오는 중…</p>
+              </div>
+            </div>
           </div>
         </div>
       `;
       bindDetailScroll();
       scheduleShareFades();
       try {
-        const response = await fetch(`/api/share/${encodeURIComponent(TOKEN)}?day=${encodeURIComponent(day)}`);
+        const params = new URLSearchParams({ day });
+        if (selectedView) params.set("view", selectedView);
+        const response = await fetch(`/api/share/${encodeURIComponent(TOKEN)}?${params.toString()}`);
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof data.detail === "string" ? data.detail : "일지를 불러오지 못했습니다.");
@@ -527,6 +536,8 @@
         const markdown = data.markdown || "";
         currentMarkdown = markdown;
         const hasJournal = Boolean(data.has_journal || markdown);
+        const views = Array.isArray(data.views) ? data.views : [];
+        selectedView = data.view || selectedView || "all";
         if (data.share_mode === "live") setUpdatedAt(data.updated_at);
         let bodyHtml = `<p class="empty">이 날짜의 일지가 없습니다.</p>`;
         if (markdown) {
@@ -538,30 +549,94 @@
           }
         }
         const attachments = Array.isArray(data.attachments) ? data.attachments : [];
-        const attachHtml = attachments.length
-          ? attachments
+        const showViewNav = views.some((item) => item.kind === "room");
+        const groupAttach = selectedView === "all" && showViewNav;
+        let attachHtml = "";
+        if (!attachments.length) {
+          attachHtml = `<li class="empty">첨부 없음</li>`;
+        } else if (groupAttach) {
+          const groups = new Map();
+          for (const file of attachments) {
+            const key = String(file.chat_title || file.chat || "").trim() || "기타";
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(file);
+          }
+          for (const [title, rows] of groups) {
+            attachHtml += `<li class="attach-group-label">
+              <span class="material-symbols-outlined attach-group-icon" aria-hidden="true">expand_circle_down</span>
+              <span class="attach-group-title">${escapeHtml(title)}</span>
+            </li>`;
+            attachHtml += rows
               .map(
                 (file) => `<li>
                   <img class="attach-icon" src="${escapeHtml(file.icon || "")}" alt="" width="20" height="20">
                   <a href="${escapeHtml(file.href || "#")}" target="_blank" rel="noreferrer">${escapeHtml(file.name || "")}</a>
                 </li>`
               )
-              .join("")
-          : `<li class="empty">첨부 없음</li>`;
-        const scroll = document.getElementById("share-detail-scroll");
-        if (scroll) {
-          scroll.innerHTML = `
-            ${bodyHtml}
-            <div class="journal-attach">
-              <h3>첨부</h3>
-              <ul class="attach-list">${attachHtml}</ul>
-            </div>
-          `;
+              .join("");
+          }
+        } else {
+          attachHtml = attachments
+            .map(
+              (file) => `<li>
+                <img class="attach-icon" src="${escapeHtml(file.icon || "")}" alt="" width="20" height="20">
+                <a href="${escapeHtml(file.href || "#")}" target="_blank" rel="noreferrer">${escapeHtml(file.name || "")}</a>
+              </li>`
+            )
+            .join("");
         }
-        ["share-day-link", "share-day-print", "share-day-copy"].forEach((id) => {
-          const btn = document.getElementById(id);
-          if (btn) btn.disabled = !hasJournal;
+        const viewNav = showViewNav
+          ? `<nav class="journal-view-nav" aria-label="일지 보기">
+              ${views
+                .map((item) => {
+                  const active = item.id === selectedView;
+                  return `<button type="button" class="journal-view-btn${active ? " is-active" : ""}" data-share-view="${escapeHtml(item.id)}" aria-pressed="${active ? "true" : "false"}">
+                    <span class="journal-view-label">${escapeHtml(item.label)}</span>
+                  </button>`;
+                })
+                .join("")}
+            </nav>
+            <div class="journal-view-resize" role="separator" aria-orientation="vertical" aria-hidden="true"></div>`
+          : "";
+        detail.innerHTML = `
+          <div class="journal-detail-layout${showViewNav ? " has-view-nav" : ""}">
+            ${viewNav}
+            <div class="journal-detail-main">
+              <div class="row-head">
+                <h3>${escapeHtml(formatDayTitle(day))}</h3>
+                <span class="journal-print-view">${escapeHtml(views.find((item) => item.id === selectedView)?.label || (selectedView === "all" ? "통합" : selectedView))}</span>
+                <div class="journal-actions">
+                  <button type="button" id="share-day-link" class="icon-btn" title="공유 링크" aria-label="공유 링크" ${hasJournal ? "" : "disabled"}>
+                    <span class="material-symbols-outlined" aria-hidden="true">link</span>
+                  </button>
+                  <button type="button" id="share-day-print" class="icon-btn" title="인쇄" aria-label="인쇄" ${hasJournal ? "" : "disabled"}>
+                    <span class="material-symbols-outlined" aria-hidden="true">print</span>
+                  </button>
+                  <button type="button" id="share-day-copy" class="icon-btn" title="복사" aria-label="복사" ${hasJournal ? "" : "disabled"}>
+                    <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
+                  </button>
+                </div>
+              </div>
+              <div class="list-scroll-wrap" id="share-detail-wrap">
+                <div class="list-scroll" id="share-detail-scroll">
+                  ${bodyHtml}
+                  <div class="journal-attach">
+                    <h3>첨부</h3>
+                    <ul class="attach-list">${attachHtml}</ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        detail.querySelectorAll("[data-share-view]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const next = btn.getAttribute("data-share-view");
+            if (!next || next === selectedView) return;
+            openDay(day, next);
+          });
         });
+        bindDetailScroll();
         bindDetailActions(hasJournal);
       } catch (err) {
         currentMarkdown = "";

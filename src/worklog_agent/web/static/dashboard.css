@@ -3973,12 +3973,33 @@ button.schedule-add-btn {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.attach-list li.attach-group-label .attach-group-icon {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.attach-list li.attach-group-label .attach-group-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .attach-list li.attach-group-label:first-child {
   margin-top: 0;
   padding-top: 0;
   border-top: 0;
+}
+
+.journal-print-view {
+  display: none;
 }
 
 .attach-icon {
@@ -4258,16 +4279,24 @@ body.share-mode.share-day {
   display: flex;
   flex-direction: column;
   padding: 14px;
+  --journal-view-nav-width: 148px;
 }
 
-.share-library-detail > .row-head {
+.share-library-detail > .journal-detail-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.share-library-detail > .row-head,
+.share-library-detail .journal-detail-main > .row-head {
   flex: 0 0 auto;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
 }
 
-.share-library-detail > .list-scroll-wrap {
+.share-library-detail > .list-scroll-wrap,
+.share-library-detail .journal-detail-main > .list-scroll-wrap {
   flex: 1 1 0%;
   min-height: 0;
   overflow: hidden;
@@ -4447,6 +4476,8 @@ body.share-mode.share-day {
   .share-library-browse,
   .share-head,
   .journal-actions,
+  .journal-view-nav,
+  .journal-view-resize,
   .list-scroll-wrap::after {
     display: none !important;
   }
@@ -4482,8 +4513,20 @@ body.share-mode.share-day {
     width: 100% !important;
   }
 
+  #journal-detail .journal-detail-layout,
+  #share-detail .journal-detail-layout,
+  #journal-detail .journal-detail-main,
+  #share-detail .journal-detail-main {
+    display: block !important;
+    width: 100% !important;
+  }
+
   #journal-detail .row-head,
   #share-detail .row-head {
+    position: relative !important;
+    display: flex !important;
+    align-items: baseline !important;
+    justify-content: space-between !important;
     margin-bottom: 16px !important;
   }
 
@@ -4491,6 +4534,22 @@ body.share-mode.share-day {
   #share-detail .row-head h3 {
     color: #111 !important;
     font-size: 20px !important;
+    margin: 0 !important;
+    padding-right: 120px !important;
+  }
+
+  #journal-detail .journal-print-view,
+  #share-detail .journal-print-view {
+    display: block !important;
+    position: absolute !important;
+    top: 2px !important;
+    right: 0 !important;
+    margin: 0 !important;
+    color: #666 !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    font-style: italic !important;
+    white-space: nowrap !important;
   }
 
   #journal-detail .list-scroll-wrap,

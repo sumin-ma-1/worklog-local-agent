@@ -302,20 +302,232 @@ def _day_share_markdown(storage: Any, day: str) -> tuple[bool, str]:
     return has_any, ""
 
 
+def attachments_for_view(
+    storage: Any | None,
+    day: str,
+    *,
+    view: str,
+    rooms: list[dict[str, str]] | None = None,
+    daily: dict[str, Any] | None = None,
+    files: list[dict[str, str]] | None = None,
+) -> list[dict[str, str]]:
+    from worklog_agent.storage import slugify
+
+    if rooms is not None:
+        room_rows = rooms
+    elif storage is not None and hasattr(storage, "list_room_journals"):
+        room_rows = storage.list_room_journals(day)
+    else:
+        room_rows = []
+
+    if files is not None:
+        source_files = files
+    elif storage is not None:
+        source_files = storage.list_attachments(day)
+    else:
+        source_files = []
+    slug_to_title: dict[str, str] = {}
+    id_to_slug: dict[str, str] = {}
+    for room in room_rows:
+        title = str(room.get("title") or room.get("id") or "")
+        slug = slugify(title, fallback=str(room.get("id") or "chat"))
+        slug_to_title[slug] = title
+        id_to_slug[str(room.get("id"))] = slug
+    if isinstance(daily, dict):
+        for chat in daily.get("chats") or []:
+            if not isinstance(chat, dict):
+                continue
+            chat_id = str(chat.get("chat_id") or "")
+            title = str(chat.get("title") or chat_id or "chat")
+            slug = slugify(title, fallback=chat_id or "chat")
+            slug_to_title.setdefault(slug, title)
+            if chat_id:
+                id_to_slug.setdefault(chat_id, slug)
+
+    enriched: list[dict[str, str]] = []
+    for item in source_files:
+        chat_slug = str(item.get("chat") or item.get("chat_slug") or "")
+        chat_title = str(item.get("chat_title") or "") or slug_to_title.get(chat_slug) or chat_slug
+        row = dict(item)
+        row["chat_slug"] = chat_slug
+        row["chat_title"] = chat_title
+        enriched.append(row)
+
+    selected = str(view or "all").strip() or "all"
+    if selected != "all":
+        want_slug = id_to_slug.get(selected)
+        if not want_slug:
+            title = next((r.get("title") for r in room_rows if str(r.get("id")) == selected), selected)
+            want_slug = slugify(str(title or selected), fallback=str(selected))
+        enriched = [row for row in enriched if row.get("chat_slug") == want_slug]
+    return enriched
+
+
+def journal_day_payload(storage: Any, day: str, *, view: str | None = None) -> dict[str, Any]:
+    rooms = storage.list_room_journals(day) if hasattr(storage, "list_room_journals") else []
+    has_combined = storage.journal_path(day).exists()
+    has_journal = (
+        storage.has_any_journal(day)
+        if hasattr(storage, "has_any_journal")
+        else (has_combined or bool(rooms))
+    )
+    views: list[dict[str, str]] = []
+    if has_combined:
+        views.append({"id": "all", "label": "통합", "kind": "combined"})
+    for room in rooms:
+        views.append({"id": str(room["id"]), "label": str(room["title"]), "kind": "room"})
+
+    selected = str(view or "").strip()
+    if not selected:
+        selected = views[0]["id"] if views else "all"
+    valid_ids = {item["id"] for item in views}
+    if selected not in valid_ids:
+        if selected == "all" and not has_combined and rooms:
+            selected = str(rooms[0]["id"])
+        elif views:
+            selected = views[0]["id"]
+        else:
+            selected = "all"
+
+    markdown = ""
+    if selected == "all" and has_combined:
+        markdown = storage.read_journal(day)
+    elif selected != "all":
+        try:
+            markdown = storage.read_room_journal(day, selected)
+        except FileNotFoundError:
+            markdown = ""
+
+    daily_payload = None
+    if storage.daily_path(day).exists():
+        daily_payload = storage.load_daily(day).model_dump(mode="json")
+    attachments = attachments_for_view(
+        storage,
+        day,
+        view=selected,
+        rooms=rooms,
+        daily=daily_payload,
+    )
+    return {
+        "date": day,
+        "markdown": markdown,
+        "has_journal": has_journal,
+        "has_combined": has_combined,
+        "view": selected,
+        "views": views,
+        "daily": daily_payload,
+        "attachments": attachments,
+    }
+
+
+def pack_day_share_snapshot(storage: Any, day: str, attachments: list[dict[str, str]]) -> dict[str, Any]:
+    """Store combined + per-room markdown so shared viewers can switch views."""
+    rooms = storage.list_room_journals(day) if hasattr(storage, "list_room_journals") else []
+    has_combined = storage.journal_path(day).exists()
+    has_journal = (
+        storage.has_any_journal(day)
+        if hasattr(storage, "has_any_journal")
+        else (has_combined or bool(rooms))
+    )
+    views: list[dict[str, str]] = []
+    if has_combined:
+        views.append({"id": "all", "label": "통합", "kind": "combined"})
+    room_markdowns: dict[str, str] = {}
+    for room in rooms:
+        room_id = str(room["id"])
+        views.append({"id": room_id, "label": str(room["title"]), "kind": "room"})
+        try:
+            room_markdowns[room_id] = storage.read_room_journal(day, room_id)
+        except FileNotFoundError:
+            room_markdowns[room_id] = ""
+    combined_markdown = storage.read_journal(day) if has_combined else ""
+    daily_payload = None
+    if storage.daily_path(day).exists():
+        daily_payload = storage.load_daily(day).model_dump(mode="json")
+    enriched_attachments = attachments_for_view(
+        storage,
+        day,
+        view="all",
+        rooms=rooms,
+        daily=daily_payload,
+        files=attachments,
+    )
+    default_view = "all" if has_combined else (views[0]["id"] if views else "all")
+    markdown = combined_markdown
+    if default_view != "all":
+        markdown = room_markdowns.get(default_view, "")
+    return {
+        "date": day,
+        "markdown": markdown,
+        "combined_markdown": combined_markdown,
+        "room_markdowns": room_markdowns,
+        "has_journal": has_journal,
+        "has_combined": has_combined,
+        "views": views,
+        "view": default_view,
+        "attachments": enriched_attachments,
+        "daily": None,
+    }
+
+
+def select_share_day_view(packed: dict[str, Any], view: str | None = None) -> dict[str, Any]:
+    views = [item for item in (packed.get("views") or []) if isinstance(item, dict)]
+    has_combined = bool(packed.get("has_combined"))
+    room_markdowns = packed.get("room_markdowns") if isinstance(packed.get("room_markdowns"), dict) else {}
+    selected = str(view or packed.get("view") or "").strip()
+    if not selected:
+        selected = str(views[0]["id"]) if views else "all"
+    valid_ids = {str(item.get("id")) for item in views}
+    if selected not in valid_ids:
+        if selected == "all" and not has_combined and views:
+            selected = str(views[0]["id"])
+        elif views:
+            selected = str(views[0]["id"])
+        else:
+            selected = "all"
+
+    if selected == "all":
+        markdown = str(packed.get("combined_markdown") or packed.get("markdown") or "")
+    else:
+        markdown = str(room_markdowns.get(selected) or "")
+        if not markdown and not room_markdowns:
+            # Legacy snapshots only stored one markdown blob.
+            markdown = str(packed.get("markdown") or "")
+
+    rooms = [
+        {"id": str(item.get("id")), "title": str(item.get("label") or item.get("id"))}
+        for item in views
+        if item.get("kind") == "room"
+    ]
+    attachments = attachments_for_view(
+        storage=None,  # unused when files provided
+        day=str(packed.get("date") or ""),
+        view=selected,
+        rooms=rooms,
+        daily=None,
+        files=list(packed.get("attachments") or []),
+    ) if packed.get("attachments") is not None else []
+    # attachments_for_view with storage=None - need to fix to not call storage methods when files provided
+    return {
+        "date": str(packed.get("date") or ""),
+        "markdown": markdown,
+        "has_journal": bool(packed.get("has_journal") or markdown),
+        "has_combined": has_combined,
+        "view": selected,
+        "views": views,
+        "attachments": attachments,
+        "daily": packed.get("daily"),
+    }
+
+
 def build_day_share_snapshot(storage: Any, day: str, token: str) -> dict[str, Any]:
     snap_root = share_snapshot_dir(storage.root, token)
     if snap_root.exists():
         shutil.rmtree(snap_root, ignore_errors=True)
     files_root = snap_root / "files"
     files_root.mkdir(parents=True, exist_ok=True)
-    has_journal, markdown = _day_share_markdown(storage, day)
     attachments = _copy_day_attachments(storage, day, files_root)
-    return {
-        "date": day,
-        "markdown": markdown,
-        "has_journal": has_journal,
-        "attachments": attachments,
-    }
+    return pack_day_share_snapshot(storage, day, attachments)
 
 
 def create_share_token(root: Path, day: str, *, mode: str = "live") -> dict[str, Any]:
@@ -364,16 +576,8 @@ def create_library_share_token(root: Path, *, mode: str = "live") -> dict[str, A
         files_root.mkdir(parents=True, exist_ok=True)
         packed = []
         for day in dates:
-            has_journal, markdown = _day_share_markdown(storage, day)
             attachments = _copy_day_attachments(storage, day, files_root)
-            packed.append(
-                {
-                    "date": day,
-                    "markdown": markdown,
-                    "has_journal": has_journal,
-                    "attachments": attachments,
-                }
-            )
+            packed.append(pack_day_share_snapshot(storage, day, attachments))
         meta["snapshot"] = {"journals": packed}
     shares[token] = meta
     save_shares(root, shares)
@@ -431,7 +635,12 @@ def share_for_day(root: Path, day: str, *, mode: str | None = None) -> dict[str,
     return None
 
 
-def snapshot_day_payload(meta: dict[str, Any], day: str | None = None) -> dict[str, Any] | None:
+def snapshot_day_payload(
+    meta: dict[str, Any],
+    day: str | None = None,
+    *,
+    view: str | None = None,
+) -> dict[str, Any] | None:
     snap = meta.get("snapshot")
     if not isinstance(snap, dict):
         return None
@@ -442,21 +651,9 @@ def snapshot_day_payload(meta: dict[str, Any], day: str | None = None) -> dict[s
             return None
         for item in journals:
             if isinstance(item, dict) and str(item.get("date") or "") == target:
-                return {
-                    "date": target,
-                    "markdown": str(item.get("markdown") or ""),
-                    "has_journal": bool(item.get("has_journal") or item.get("markdown")),
-                    "attachments": list(item.get("attachments") or []),
-                    "daily": None,
-                }
+                return select_share_day_view(item, view)
         return None
-    return {
-        "date": str(meta.get("day") or ""),
-        "markdown": str(snap.get("markdown") or ""),
-        "has_journal": bool(snap.get("has_journal") or snap.get("markdown")),
-        "attachments": list(snap.get("attachments") or []),
-        "daily": None,
-    }
+    return select_share_day_view(snap, view)
 
 
 def snapshot_library_index(meta: dict[str, Any]) -> list[dict[str, Any]]:

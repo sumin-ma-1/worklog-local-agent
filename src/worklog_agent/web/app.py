@@ -55,6 +55,7 @@ from worklog_agent.users import (
     ensure_user_root,
     find_share,
     find_telegram_link_owner,
+    journal_day_payload,
     library_share_for,
     load_user_chats,
     load_user_preferences,
@@ -340,107 +341,10 @@ def _watched_chats(cfg: AppConfig) -> list[dict[str, object]]:
     return rows
 
 
-def _attachments_for_view(
-    storage: Storage,
-    day: str,
-    *,
-    view: str,
-    rooms: list[dict[str, str]],
-    daily: dict | None,
-) -> list[dict[str, str]]:
-    from worklog_agent.storage import slugify
-
-    files = storage.list_attachments(day)
-    slug_to_title: dict[str, str] = {}
-    id_to_slug: dict[str, str] = {}
-    for room in rooms:
-        title = str(room.get("title") or room.get("id") or "")
-        slug = slugify(title, fallback=str(room.get("id") or "chat"))
-        slug_to_title[slug] = title
-        id_to_slug[str(room.get("id"))] = slug
-    if isinstance(daily, dict):
-        for chat in daily.get("chats") or []:
-            if not isinstance(chat, dict):
-                continue
-            chat_id = str(chat.get("chat_id") or "")
-            title = str(chat.get("title") or chat_id or "chat")
-            slug = slugify(title, fallback=chat_id or "chat")
-            slug_to_title.setdefault(slug, title)
-            if chat_id:
-                id_to_slug.setdefault(chat_id, slug)
-
-    enriched: list[dict[str, str]] = []
-    for item in files:
-        chat_slug = str(item.get("chat") or "")
-        chat_title = slug_to_title.get(chat_slug) or chat_slug
-        row = dict(item)
-        row["chat_slug"] = chat_slug
-        row["chat_title"] = chat_title
-        enriched.append(row)
-
-    if view and view != "all":
-        want_slug = id_to_slug.get(view)
-        if not want_slug:
-            title = next((r.get("title") for r in rooms if str(r.get("id")) == view), view)
-            want_slug = slugify(str(title or view), fallback=str(view))
-        enriched = [row for row in enriched if row.get("chat_slug") == want_slug]
-    return enriched
-
-
 def _journal_payload(storage: Storage, day: str, *, view: str | None = None) -> dict:
-    rooms = storage.list_room_journals(day)
-    has_combined = storage.journal_path(day).exists()
-    has_journal = has_combined or bool(rooms)
-    views: list[dict[str, str]] = []
-    if has_combined:
-        views.append({"id": "all", "label": "통합", "kind": "combined"})
-    for room in rooms:
-        views.append({"id": room["id"], "label": room["title"], "kind": "room"})
-
-    selected = str(view or "").strip()
-    if not selected:
-        selected = views[0]["id"] if views else "all"
-    valid_ids = {item["id"] for item in views}
-    if selected not in valid_ids:
-        if selected == "all" and not has_combined and rooms:
-            selected = rooms[0]["id"]
-        elif views:
-            selected = views[0]["id"]
-        else:
-            selected = "all"
-
-    markdown = ""
-    if selected == "all" and has_combined:
-        markdown = storage.read_journal(day)
-    elif selected != "all":
-        try:
-            markdown = storage.read_room_journal(day, selected)
-        except FileNotFoundError:
-            markdown = ""
-
-    daily = None
-    daily_payload = None
-    if storage.daily_path(day).exists():
-        daily = storage.load_daily(day)
-        daily_payload = daily.model_dump(mode="json")
-    attachments = _attachments_for_view(
-        storage,
-        day,
-        view=selected,
-        rooms=rooms,
-        daily=daily_payload,
-    )
-    return {
-        "date": day,
-        "markdown": markdown,
-        "has_journal": has_journal,
-        "has_combined": has_combined,
-        "view": selected,
-        "views": views,
-        "daily": daily_payload,
-        "attachments": attachments,
-        "updated_at": _day_updated_at_iso(storage, day),
-    }
+    payload = journal_day_payload(storage, day, view=view)
+    payload["updated_at"] = _day_updated_at_iso(storage, day)
+    return payload
 
 
 def create_app(config_path: Path | None = None) -> FastAPI:
@@ -637,7 +541,11 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         )
 
     @app.get("/api/share/{token}")
-    async def share_api(token: str, day: str | None = None) -> dict:
+    async def share_api(
+        token: str,
+        day: str | None = None,
+        view: str | None = Query(default=None),
+    ) -> dict:
         state.reload()
         found = find_share(state.config.data_root, token)
         if not found:
@@ -672,11 +580,11 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             if day:
                 day = _require_day(day)
                 if share_mode == "snapshot":
-                    payload = snapshot_day_payload(meta, day)
+                    payload = snapshot_day_payload(meta, day, view=view)
                     if not payload:
                         raise HTTPException(status_code=404, detail="공유된 일지가 없습니다.")
                     return with_attach_links(payload)
-                payload = _journal_payload(storage, day)
+                payload = _journal_payload(storage, day, view=view)
                 return with_attach_links(payload)
             if share_mode == "snapshot":
                 journals = snapshot_library_index(meta)
@@ -707,11 +615,11 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             }
         day = _require_day(str(meta.get("day") or ""))
         if share_mode == "snapshot":
-            payload = snapshot_day_payload(meta, day)
+            payload = snapshot_day_payload(meta, day, view=view)
             if not payload:
                 raise HTTPException(status_code=404, detail="공유된 일지가 없습니다.")
             return with_attach_links(payload)
-        payload = _journal_payload(storage, day)
+        payload = _journal_payload(storage, day, view=view)
         return with_attach_links(payload)
 
     @app.get("/api/share/{token}/file")

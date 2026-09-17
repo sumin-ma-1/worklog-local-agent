@@ -184,6 +184,144 @@ def test_plan_run_days_regenerate_when_generate_type_changes(tmp_path: Path) -> 
     assert fill_from_rooms[0]["fill_missing"] is True
 
 
+def test_plan_run_days_skip_when_both_already_covers_request(tmp_path: Path) -> None:
+    from worklog_agent.models import DailyBundle, DailyChat
+
+    root = tmp_path / "data"
+    storage = Storage(root)
+    storage.ensure()
+    storage.save_journal("2026-05-01", "# combined\n")
+    storage.save_room_journal("2026-05-01", -1001, "# room\n")
+    storage.write_room_journals_index(
+        "2026-05-01",
+        [{"id": "-1001", "title": "team"}],
+    )
+    write_journal_meta(
+        storage,
+        "2026-05-01",
+        source_fingerprint="fp",
+        generate_type="both",
+    )
+    storage.save_daily(
+        DailyBundle(
+            date="2026-05-01",
+            timezone="Asia/Seoul",
+            chats=[DailyChat(chat_id=-1001, title="team", message_count=1)],
+            totals={"chats": 1, "messages": 1, "attachments": 0},
+        )
+    )
+
+    for wanted in ("both", "combined", "per_room"):
+        plan = plan_run_days(
+            storage,
+            ["2026-05-01"],
+            skip_existing=True,
+            generate_type=wanted,
+        )
+        assert plan[0]["action"] == "skip", wanted
+        assert plan[0]["reason"] == "already_exists", wanted
+        assert plan[0]["covers_generate_type"] is True, wanted
+
+
+def test_plan_run_days_append_rooms_when_missing_room_journals(tmp_path: Path) -> None:
+    from worklog_agent.models import DailyBundle, DailyChat
+
+    root = tmp_path / "data"
+    storage = Storage(root)
+    storage.ensure()
+    storage.save_room_journal("2026-05-01", -1001, "# room a\n")
+    storage.write_room_journals_index(
+        "2026-05-01",
+        [{"id": "-1001", "title": "room-a"}],
+    )
+    write_journal_meta(
+        storage,
+        "2026-05-01",
+        source_fingerprint="fp",
+        generate_type="per_room",
+    )
+    storage.save_daily(
+        DailyBundle(
+            date="2026-05-01",
+            timezone="Asia/Seoul",
+            chats=[
+                DailyChat(chat_id=-1001, title="room-a", message_count=1),
+                DailyChat(chat_id=-1002, title="room-b", message_count=1),
+            ],
+            totals={"chats": 2, "messages": 2, "attachments": 0},
+        )
+    )
+
+    plan = plan_run_days(
+        storage,
+        ["2026-05-01"],
+        skip_existing=True,
+        generate_type="per_room",
+    )
+    assert plan[0]["action"] == "run"
+    assert plan[0]["reason"] == "append_rooms"
+    assert plan[0]["append_rooms"] is True
+    assert plan[0]["missing_rooms"] == ["-1002"]
+
+
+def test_plan_run_days_stale_both_keeps_append_rooms(tmp_path: Path) -> None:
+    root = tmp_path / "data"
+    storage = Storage(root)
+    storage.ensure()
+    _write_message(storage, msg_id=1, text="hello")
+    storage.journal_path("2026-05-01").write_text("# combined", encoding="utf-8")
+    storage.save_room_journal("2026-05-01", -1001, "# room\n")
+    storage.write_room_journals_index(
+        "2026-05-01",
+        [{"id": "-1001", "title": "team"}],
+    )
+    write_journal_meta(
+        storage,
+        "2026-05-01",
+        source_fingerprint="stale-fingerprint",
+        generate_type="both",
+    )
+    _write_message(storage, msg_id=2, text="world")
+
+    plan = plan_run_days(
+        storage,
+        ["2026-05-01"],
+        regenerate_if_stale=True,
+        generate_type="both",
+        tz_name="Asia/Seoul",
+    )
+    assert plan[0]["action"] == "run"
+    assert plan[0]["reason"] == "stale_rooms"
+    assert plan[0]["append_rooms"] is True
+
+
+def test_plan_run_days_force_does_not_append_rooms(tmp_path: Path) -> None:
+    root = tmp_path / "data"
+    storage = Storage(root)
+    storage.ensure()
+    storage.save_room_journal("2026-05-01", -1001, "# room\n")
+    storage.write_room_journals_index(
+        "2026-05-01",
+        [{"id": "-1001", "title": "team"}],
+    )
+    write_journal_meta(
+        storage,
+        "2026-05-01",
+        source_fingerprint="fp",
+        generate_type="per_room",
+    )
+
+    plan = plan_run_days(
+        storage,
+        ["2026-05-01"],
+        force=True,
+        generate_type="per_room",
+    )
+    assert plan[0]["action"] == "run"
+    assert plan[0]["reason"] == "force"
+    assert plan[0]["append_rooms"] is False
+
+
 def test_plan_run_days_regenerate_if_stale_legacy_without_meta(tmp_path: Path) -> None:
     root = tmp_path / "data"
     storage = Storage(root)

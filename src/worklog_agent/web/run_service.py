@@ -211,6 +211,7 @@ async def _run_pipeline_queue(
                 day,
                 generate_type=generate_type,
                 fill_missing=bool(item.get("fill_missing")),
+                append_rooms=bool(item.get("append_rooms")),
                 on_progress=progress,
             )
             last_path = path
