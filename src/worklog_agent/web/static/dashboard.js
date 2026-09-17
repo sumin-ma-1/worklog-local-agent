@@ -816,16 +816,32 @@ function fileIconSrc(filename) {
   return `/static/file-icons/${fileIconKey(filename)}.svg`;
 }
 
-function renderAttachmentItems(attachments) {
-  return (attachments || [])
-    .map(
-      (file) =>
-        `<li>
-          <img class="attach-icon" src="${escapeHtml(fileIconSrc(file.name))}" alt="" width="20" height="20">
-          <a href="/api/attachments/file?path=${encodeURIComponent(file.relative)}" target="_blank" rel="noreferrer">${escapeHtml(file.name)}</a>
-        </li>`
-    )
-    .join("");
+function renderAttachmentItems(attachments, { groupByChat = false } = {}) {
+  const files = attachments || [];
+  if (!files.length) return "";
+
+  const renderFile = (file) =>
+    `<li>
+      <img class="attach-icon" src="${escapeHtml(fileIconSrc(file.name))}" alt="" width="20" height="20">
+      <a href="/api/attachments/file?path=${encodeURIComponent(file.relative)}" target="_blank" rel="noreferrer">${escapeHtml(file.name)}</a>
+    </li>`;
+
+  if (!groupByChat) {
+    return files.map(renderFile).join("");
+  }
+
+  const groups = new Map();
+  for (const file of files) {
+    const key = String(file.chat_title || file.chat || "").trim() || "기타";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(file);
+  }
+  const parts = [];
+  for (const [title, rows] of groups) {
+    parts.push(`<li class="attach-group-label">${escapeHtml(title)}</li>`);
+    parts.push(...rows.map(renderFile));
+  }
+  return parts.join("");
 }
 
 function weekIndexInMonth(y, m, d) {
@@ -1318,13 +1334,14 @@ function scheduleJournalScrollFade() {
 }
 
 function renderJournalDetail(data, { editing = false } = {}) {
-  const attach = renderAttachmentItems(data.attachments);
-  const markdown = data.markdown || "";
-  const hasJournal = Boolean(data.has_journal || markdown);
   const views = Array.isArray(data.views) ? data.views : [];
   const selectedView = data.view || state.journalView || "all";
   state.journalView = selectedView;
   const showViewNav = views.some((item) => item.kind === "room");
+  const groupAttach = selectedView === "all" && showViewNav;
+  const attach = renderAttachmentItems(data.attachments, { groupByChat: groupAttach });
+  const markdown = data.markdown || "";
+  const hasJournal = Boolean(data.has_journal || markdown);
   const body = editing
     ? `<div class="journal-editor-wrap" id="journal-editor-wrap">
         <textarea id="journal-editor" class="journal-editor" spellcheck="false">${escapeHtml(markdown)}</textarea>
@@ -1370,7 +1387,16 @@ function renderJournalDetail(data, { editing = false } = {}) {
             </button>`;
           })
           .join("")}
-      </nav>`
+      </nav>
+      <div
+        class="journal-view-resize"
+        id="journal-view-resize"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="일지 보기 폭 조절"
+        title="드래그하여 폭 조절"
+        tabindex="0"
+      ></div>`
     : "";
   $("#journal-detail").innerHTML = `
     <div class="journal-detail-layout${showViewNav ? " has-view-nav" : ""}">
@@ -1388,6 +1414,8 @@ function renderJournalDetail(data, { editing = false } = {}) {
       </div>
     </div>
   `;
+
+  if (showViewNav) applyJournalViewNavWidth(readStoredJournalViewNavWidth(), { persist: false });
 
   $("#journal-detail-scroll")?.addEventListener("scroll", updateJournalScrollFade, { passive: true });
   $("#journal-editor")?.addEventListener("scroll", updateJournalScrollFade, { passive: true });
@@ -2890,9 +2918,112 @@ function initSidebarResize() {
   });
 }
 
+const JOURNAL_VIEW_NAV_WIDTH_KEY = "worklog.journalViewNavWidth";
+const JOURNAL_VIEW_NAV_WIDTH_MIN = 112;
+const JOURNAL_VIEW_NAV_WIDTH_MAX = 280;
+const JOURNAL_VIEW_NAV_WIDTH_DEFAULT = 148;
+
+function clampJournalViewNavWidth(px) {
+  const panel = $("#journal-detail");
+  const maxByPanel = panel ? Math.floor(panel.clientWidth * 0.45) : JOURNAL_VIEW_NAV_WIDTH_MAX;
+  const max = Math.max(JOURNAL_VIEW_NAV_WIDTH_MIN, Math.min(JOURNAL_VIEW_NAV_WIDTH_MAX, maxByPanel || JOURNAL_VIEW_NAV_WIDTH_MAX));
+  return Math.max(JOURNAL_VIEW_NAV_WIDTH_MIN, Math.min(max, Math.round(px)));
+}
+
+function readStoredJournalViewNavWidth() {
+  try {
+    const raw = Number.parseFloat(localStorage.getItem(JOURNAL_VIEW_NAV_WIDTH_KEY) || "");
+    if (Number.isFinite(raw) && raw > 0) return clampJournalViewNavWidth(raw);
+  } catch (_) {
+    /* ignore */
+  }
+  return JOURNAL_VIEW_NAV_WIDTH_DEFAULT;
+}
+
+function applyJournalViewNavWidth(px, { persist = true } = {}) {
+  const panel = $("#journal-detail");
+  if (!panel) return JOURNAL_VIEW_NAV_WIDTH_DEFAULT;
+  const width = clampJournalViewNavWidth(px);
+  panel.style.setProperty("--journal-view-nav-width", `${width}px`);
+  const handle = $("#journal-view-resize");
+  if (handle) {
+    handle.setAttribute("aria-valuenow", String(width));
+    handle.setAttribute("aria-valuemin", String(JOURNAL_VIEW_NAV_WIDTH_MIN));
+    handle.setAttribute("aria-valuemax", String(JOURNAL_VIEW_NAV_WIDTH_MAX));
+  }
+  if (persist) {
+    try {
+      localStorage.setItem(JOURNAL_VIEW_NAV_WIDTH_KEY, String(width));
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  return width;
+}
+
+function initJournalViewNavResize() {
+  const panel = $("#journal-detail");
+  if (!panel || panel.dataset.viewNavResizeBound === "1") return;
+  panel.dataset.viewNavResizeBound = "1";
+
+  let dragging = false;
+  let startX = 0;
+  let startWidth = JOURNAL_VIEW_NAV_WIDTH_DEFAULT;
+
+  const stopDrag = () => {
+    if (!dragging) return;
+    dragging = false;
+    panel.classList.remove("is-resizing-view-nav");
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", stopDrag);
+    document.removeEventListener("pointercancel", stopDrag);
+  };
+
+  const onMove = (event) => {
+    if (!dragging) return;
+    applyJournalViewNavWidth(startWidth + (event.clientX - startX));
+  };
+
+  panel.addEventListener("pointerdown", (event) => {
+    const handle = event.target.closest?.("#journal-view-resize");
+    if (!handle) return;
+    if (event.button != null && event.button !== 0) return;
+    event.preventDefault();
+    dragging = true;
+    startX = event.clientX;
+    startWidth = readStoredJournalViewNavWidth();
+    const current = Number.parseFloat(getComputedStyle(panel).getPropertyValue("--journal-view-nav-width"));
+    if (Number.isFinite(current) && current > 0) startWidth = current;
+    panel.classList.add("is-resizing-view-nav");
+    handle.setPointerCapture?.(event.pointerId);
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", stopDrag);
+    document.addEventListener("pointercancel", stopDrag);
+  });
+
+  panel.addEventListener("keydown", (event) => {
+    if (event.target?.id !== "journal-view-resize") return;
+    const step = event.shiftKey ? 24 : 12;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      applyJournalViewNavWidth(readStoredJournalViewNavWidth() - step);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      applyJournalViewNavWidth(readStoredJournalViewNavWidth() + step);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      applyJournalViewNavWidth(JOURNAL_VIEW_NAV_WIDTH_MIN);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      applyJournalViewNavWidth(JOURNAL_VIEW_NAV_WIDTH_MAX);
+    }
+  });
+}
+
 function initSidebar() {
   applySidebarWidth(readStoredSidebarWidth(), { persist: false });
   initSidebarResize();
+  initJournalViewNavResize();
 }
 
 function bindSidebarBrand() {

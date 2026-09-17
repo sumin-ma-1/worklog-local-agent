@@ -340,13 +340,60 @@ def _watched_chats(cfg: AppConfig) -> list[dict[str, object]]:
     return rows
 
 
+def _attachments_for_view(
+    storage: Storage,
+    day: str,
+    *,
+    view: str,
+    rooms: list[dict[str, str]],
+    daily: dict | None,
+) -> list[dict[str, str]]:
+    from worklog_agent.storage import slugify
+
+    files = storage.list_attachments(day)
+    slug_to_title: dict[str, str] = {}
+    id_to_slug: dict[str, str] = {}
+    for room in rooms:
+        title = str(room.get("title") or room.get("id") or "")
+        slug = slugify(title, fallback=str(room.get("id") or "chat"))
+        slug_to_title[slug] = title
+        id_to_slug[str(room.get("id"))] = slug
+    if isinstance(daily, dict):
+        for chat in daily.get("chats") or []:
+            if not isinstance(chat, dict):
+                continue
+            chat_id = str(chat.get("chat_id") or "")
+            title = str(chat.get("title") or chat_id or "chat")
+            slug = slugify(title, fallback=chat_id or "chat")
+            slug_to_title.setdefault(slug, title)
+            if chat_id:
+                id_to_slug.setdefault(chat_id, slug)
+
+    enriched: list[dict[str, str]] = []
+    for item in files:
+        chat_slug = str(item.get("chat") or "")
+        chat_title = slug_to_title.get(chat_slug) or chat_slug
+        row = dict(item)
+        row["chat_slug"] = chat_slug
+        row["chat_title"] = chat_title
+        enriched.append(row)
+
+    if view and view != "all":
+        want_slug = id_to_slug.get(view)
+        if not want_slug:
+            title = next((r.get("title") for r in rooms if str(r.get("id")) == view), view)
+            want_slug = slugify(str(title or view), fallback=str(view))
+        enriched = [row for row in enriched if row.get("chat_slug") == want_slug]
+    return enriched
+
+
 def _journal_payload(storage: Storage, day: str, *, view: str | None = None) -> dict:
     rooms = storage.list_room_journals(day)
     has_combined = storage.journal_path(day).exists()
     has_journal = has_combined or bool(rooms)
     views: list[dict[str, str]] = []
     if has_combined:
-        views.append({"id": "all", "label": "전체", "kind": "combined"})
+        views.append({"id": "all", "label": "통합", "kind": "combined"})
     for room in rooms:
         views.append({"id": room["id"], "label": room["title"], "kind": "room"})
 
@@ -372,8 +419,17 @@ def _journal_payload(storage: Storage, day: str, *, view: str | None = None) -> 
             markdown = ""
 
     daily = None
+    daily_payload = None
     if storage.daily_path(day).exists():
-        daily = storage.load_daily(day).model_dump(mode="json")
+        daily = storage.load_daily(day)
+        daily_payload = daily.model_dump(mode="json")
+    attachments = _attachments_for_view(
+        storage,
+        day,
+        view=selected,
+        rooms=rooms,
+        daily=daily_payload,
+    )
     return {
         "date": day,
         "markdown": markdown,
@@ -381,8 +437,8 @@ def _journal_payload(storage: Storage, day: str, *, view: str | None = None) -> 
         "has_combined": has_combined,
         "view": selected,
         "views": views,
-        "daily": daily,
-        "attachments": storage.list_attachments(day),
+        "daily": daily_payload,
+        "attachments": attachments,
         "updated_at": _day_updated_at_iso(storage, day),
     }
 

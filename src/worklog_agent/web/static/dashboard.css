@@ -1277,6 +1277,7 @@ main {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  --journal-view-nav-width: 148px;
 }
 
 .journal-detail-panel > .list-scroll-wrap,
@@ -1337,16 +1338,56 @@ main {
 }
 
 .journal-view-nav {
-  flex: 0 0 148px;
-  width: 148px;
-  max-width: 38%;
+  flex: 0 0 var(--journal-view-nav-width, 148px);
+  width: var(--journal-view-nav-width, 148px);
+  max-width: 45%;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px 10px 8px 0;
-  margin-right: 12px;
-  border-right: 1px solid var(--line);
+  padding: 4px 4px 8px 0;
+  margin-right: 0;
+  border-right: 0;
   overflow: auto;
+}
+
+.journal-view-resize {
+  position: relative;
+  flex: 0 0 8px;
+  width: 8px;
+  margin: 0 4px 0 2px;
+  cursor: col-resize;
+  touch-action: none;
+  align-self: stretch;
+  background: transparent;
+}
+
+.journal-view-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: var(--line);
+  border-radius: 999px;
+  transition: background-color 0.15s ease, width 0.15s ease;
+}
+
+.journal-view-resize:hover::after,
+.journal-view-resize:focus-visible::after,
+.journal-detail-panel.is-resizing-view-nav .journal-view-resize::after {
+  width: 2px;
+  left: 2px;
+  background: rgba(15, 27, 45, 0.35);
+}
+
+.journal-view-resize:focus-visible {
+  outline: none;
+}
+
+.journal-detail-panel.is-resizing-view-nav {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .journal-view-btn {
@@ -3922,6 +3963,22 @@ button.schedule-add-btn {
 .attach-list li.empty {
   color: var(--muted);
   font-size: 13px;
+}
+
+.attach-list li.attach-group-label {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.attach-list li.attach-group-label:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .attach-icon {
