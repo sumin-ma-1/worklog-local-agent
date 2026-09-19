@@ -1053,7 +1053,7 @@ main {
   gap: 4px;
   width: auto;
   max-width: none;
-  padding: 6px 14px;
+  padding: 6px 10px;
   border-radius: 999px;
   background: #fff;
   border: 1px solid rgba(15, 27, 45, 0.06);
@@ -1063,6 +1063,22 @@ main {
   touch-action: none;
   cursor: grab;
   user-select: none;
+}
+
+.journal-dock-tools {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.journal-dock.is-collapsed {
+  padding: 6px 8px;
+  gap: 2px;
+}
+
+.journal-dock.is-collapsed .journal-dock-tools {
+  display: none;
 }
 
 .journal-dock.is-dragging {
@@ -1079,7 +1095,7 @@ main {
   right: auto;
   transform: translate(-50%, 0);
   flex-direction: row;
-  padding: 6px 14px;
+  padding: 6px 10px;
 }
 
 .journal-dock.is-edge-bottom {
@@ -1089,7 +1105,7 @@ main {
   right: auto;
   transform: translate(-50%, 0);
   flex-direction: row;
-  padding: 6px 14px;
+  padding: 6px 10px;
 }
 
 .journal-dock.is-edge-left {
@@ -1099,7 +1115,12 @@ main {
   right: auto;
   transform: translate(0, -50%);
   flex-direction: column;
-  padding: 14px 6px;
+  padding: 10px 6px;
+}
+
+.journal-dock.is-edge-left .journal-dock-tools,
+.journal-dock.is-edge-right .journal-dock-tools {
+  flex-direction: column;
 }
 
 .journal-dock.is-edge-right {
@@ -1109,7 +1130,17 @@ main {
   right: 10px;
   transform: translate(0, -50%);
   flex-direction: column;
-  padding: 14px 6px;
+  padding: 10px 6px;
+}
+
+.journal-dock.is-collapsed.is-edge-top,
+.journal-dock.is-collapsed.is-edge-bottom {
+  padding: 6px 8px;
+}
+
+.journal-dock.is-collapsed.is-edge-left,
+.journal-dock.is-collapsed.is-edge-right {
+  padding: 8px 6px;
 }
 
 .journal-dock-btn {
@@ -1149,6 +1180,14 @@ main {
 .journal-dock-btn.is-off {
   opacity: 0.38;
   color: #6b9080;
+}
+
+.journal-dock-collapse {
+  opacity: 0.62;
+}
+
+.journal-dock.is-collapsed .journal-dock-collapse {
+  opacity: 0.9;
 }
 
 .journal-chat-panel {

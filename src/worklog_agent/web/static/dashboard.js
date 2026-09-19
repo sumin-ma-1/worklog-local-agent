@@ -2062,8 +2062,14 @@ async function runJournalFromChat(dates, label) {
 }
 
 const JOURNAL_DOCK_POS_KEY = "worklog.journalDockPos";
+const JOURNAL_DOCK_COLLAPSE_ICON = {
+  top: { collapse: "keyboard_arrow_up", expand: "keyboard_arrow_down" },
+  bottom: { collapse: "keyboard_arrow_down", expand: "keyboard_arrow_up" },
+  left: { collapse: "keyboard_arrow_left", expand: "keyboard_arrow_right" },
+  right: { collapse: "keyboard_arrow_right", expand: "keyboard_arrow_left" },
+};
 let journalDockDidDrag = false;
-let journalDockPos = { edge: "top", offset: 0.5 };
+let journalDockPos = { edge: "top", offset: 0.5, collapsed: false };
 
 function readJournalDockPos() {
   try {
@@ -2076,6 +2082,7 @@ function readJournalDockPos() {
     if (Number.isFinite(offset)) {
       journalDockPos.offset = Math.min(0.92, Math.max(0.08, offset));
     }
+    journalDockPos.collapsed = Boolean(raw.collapsed);
   } catch (_) {
     /* ignore */
   }
@@ -2089,12 +2096,34 @@ function persistJournalDockPos() {
   }
 }
 
+function syncJournalDockCollapseUi() {
+  const dock = $("#journal-dock");
+  const btn = dock?.querySelector?.('.journal-dock-btn[data-dock="collapse"]');
+  const icon = btn?.querySelector?.(".material-symbols-outlined");
+  if (!dock || !btn) return;
+  const collapsed = Boolean(journalDockPos.collapsed);
+  dock.classList.toggle("is-collapsed", collapsed);
+  dock.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  btn.title = collapsed ? "리모콘 펼치기" : "리모콘 접기";
+  btn.setAttribute("aria-label", btn.title);
+  const icons = JOURNAL_DOCK_COLLAPSE_ICON[journalDockPos.edge] || JOURNAL_DOCK_COLLAPSE_ICON.top;
+  if (icon) icon.textContent = collapsed ? icons.expand : icons.collapse;
+}
+
+function setJournalDockCollapsed(collapsed) {
+  journalDockPos.collapsed = Boolean(collapsed);
+  syncJournalDockCollapseUi();
+  persistJournalDockPos();
+}
+
 function applyJournalDockPos() {
   const dock = $("#journal-dock");
   if (!dock) return;
   dock.classList.remove("is-edge-top", "is-edge-bottom", "is-edge-left", "is-edge-right");
   dock.classList.add(`is-edge-${journalDockPos.edge}`);
   dock.style.setProperty("--dock-offset", `${(journalDockPos.offset * 100).toFixed(2)}%`);
+  syncJournalDockCollapseUi();
 }
 
 function clampDockOffset(edge, clientX, clientY, viewRect, dockRect) {
@@ -2191,8 +2220,9 @@ function initJournalDockPosition() {
 
   dock.addEventListener("pointerdown", (event) => {
     if (event.button != null && event.button !== 0) return;
-    // 아이콘 버튼 클릭은 드래그로 가로채지 않음
-    if (event.target.closest?.(".journal-dock-btn")) return;
+    // 아이콘 버튼 클릭은 드래그로 가로채지 않음 (접힌 상태의 펼치기 버튼만 예외: 끌어서 이동)
+    const btn = event.target.closest?.(".journal-dock-btn");
+    if (btn && !(journalDockPos.collapsed && btn.dataset.dock === "collapse")) return;
     dragging = true;
     journalDockDidDrag = false;
     startX = event.clientX;
@@ -2225,6 +2255,10 @@ function initJournalDock() {
     const btn = event.target.closest?.(".journal-dock-btn");
     if (!btn) return;
     const action = btn.dataset.dock;
+    if (action === "collapse") {
+      setJournalDockCollapsed(!journalDockPos.collapsed);
+      return;
+    }
     if (action === "calendar") {
       state.journalLayout.showCalendar = !state.journalLayout.showCalendar;
       persistJournalLayout();
