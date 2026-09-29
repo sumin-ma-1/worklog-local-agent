@@ -4364,8 +4364,8 @@ button.schedule-add-btn {
 
 .attach-list li.attach-group-label {
   margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--line);
+  padding-top: 0;
+  border-top: 0;
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
@@ -4391,8 +4391,6 @@ button.schedule-add-btn {
 
 .attach-list li.attach-group-label:first-child {
   margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
 }
 
 .journal-print-view {
