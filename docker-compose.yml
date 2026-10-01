@@ -1,0 +1,20 @@
+services:
+  worklog:
+    build: .
+    image: worklog-local-agent:local
+    container_name: worklog-dashboard
+    restart: unless-stopped
+    ports:
+      # Router 51000~51500 중 빈 포트 → 컨테이너 8787
+      - "51120:8787"
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+      - ./.env:/app/.env:ro
+    environment:
+      # 호스트 Ollama (Docker → 호스트)
+      OLLAMA_HOST: http://host.docker.internal:11434
+      DASHBOARD_URL: http://bigsoft.iptime.org:51120
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    working_dir: /app

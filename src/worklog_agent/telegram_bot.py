@@ -97,6 +97,9 @@ class TelegramBotClient:
             payload["menu_button"] = menu_button
         return await self._call("setChatMenuButton", payload)
 
+    async def set_my_commands(self, commands: list[dict[str, str]]) -> dict:
+        return await self._call("setMyCommands", {"commands": commands})
+
 
 DASHBOARD_KEYBOARD_LABEL = "대시보드"
 
@@ -112,25 +115,21 @@ def _generate_keyboard(
     return {"inline_keyboard": [[{"text": title, "callback_data": f"gen:{day}"}]]}
 
 
-def _dashboard_menu_button(url: str) -> dict:
-    return {
-        "type": "web_app",
-        "text": DASHBOARD_KEYBOARD_LABEL,
-        "web_app": {"url": url},
-    }
+def _remove_reply_keyboard() -> dict:
+    """이전에 깔아 둔 하단 고정 키보드를 제거한다."""
+    return {"remove_keyboard": True}
 
 
-def _dashboard_reply_keyboard() -> dict:
-    """HTTP(로컬)용: 입력창 위 고정 버튼 (Telegram WebApp은 HTTPS만 허용)."""
-    return {
-        "keyboard": [[{"text": DASHBOARD_KEYBOARD_LABEL}]],
-        "resize_keyboard": True,
-        "is_persistent": True,
-    }
+def _commands_menu_button() -> dict:
+    """입력창 옆 파란 Menu(메뉴) 버튼."""
+    return {"type": "commands"}
 
 
-def _is_https_url(url: str) -> bool:
-    return str(url or "").strip().lower().startswith("https://")
+def _bot_commands() -> list[dict[str, str]]:
+    return [
+        {"command": "dashboard", "description": "대시보드 열기 (외부 브라우저)"},
+        {"command": "start", "description": "시작 / 연결 안내"},
+    ]
 
 
 async def _keep_typing(client: TelegramBotClient, chat_id: int | str, stop: asyncio.Event) -> None:
@@ -195,17 +194,28 @@ class TelegramBotWorker:
                 self.stop_event.wait(3)
 
     async def _setup_dashboard_entry(self, chat_id: int | str | None = None) -> None:
-        """입력창 옆(메뉴) 또는 고정 키보드에 대시보드 진입점을 둔다."""
+        """입력창 옆 파란 Menu 버튼 + /dashboard 명령을 설정한다."""
+        assert self.client is not None
+        try:
+            await self.client.set_my_commands(_bot_commands())
+        except Exception:
+            logger.exception("setMyCommands 실패")
+        try:
+            await self.client.set_chat_menu_button(
+                chat_id=chat_id,
+                menu_button=_commands_menu_button(),
+            )
+        except Exception:
+            logger.exception("setChatMenuButton(commands) 실패")
+
+    async def _send_dashboard_link(self, chat_id: int | str, *, remove_keyboard: bool = False) -> None:
         assert self.client is not None
         url = self.config.public_dashboard_url
-        if _is_https_url(url):
-            try:
-                await self.client.set_chat_menu_button(
-                    chat_id=chat_id,
-                    menu_button=_dashboard_menu_button(url),
-                )
-            except Exception:
-                logger.exception("setChatMenuButton 실패")
+        await self.client.send_message(
+            chat_id,
+            url,
+            reply_markup=_remove_reply_keyboard() if remove_keyboard else None,
+        )
 
     async def _poll_once(self) -> None:
         assert self.client is not None
@@ -282,41 +292,40 @@ class TelegramBotWorker:
 
             clear_chat_memory(root)
             await self._setup_dashboard_entry(chat_id)
-            welcome_markup = None if _is_https_url(self.config.public_dashboard_url) else _dashboard_reply_keyboard()
             await self.client.send_message(
                 chat_id,
-                "일지 비서와 연결되었습니다. 일지를 묻거나 「어제 일지 생성해줘」라고 말해 보세요.",
-                reply_markup=welcome_markup,
+                "일지 비서와 연결되었습니다. 일지를 묻거나 「어제 일지 생성해줘」라고 말해 보세요.\n"
+                "입력창 옆 Menu에서 /dashboard 로 대시보드를 열 수 있습니다.",
+                reply_markup=_remove_reply_keyboard(),
             )
             return
         user_id = resolve_account_by_telegram_id(data_root, tg_id)
         if user_id:
             mark_bot_linked(data_root, user_id, telegram_user_id=tg_id, chat_id=chat_id)
             await self._setup_dashboard_entry(chat_id)
-            welcome_markup = None if _is_https_url(self.config.public_dashboard_url) else _dashboard_reply_keyboard()
             await self.client.send_message(
                 chat_id,
-                "다시 오신 것을 환영합니다. 일지를 묻거나 오늘/어제 일지 생성을 요청해 보세요.",
-                reply_markup=welcome_markup,
+                "다시 오신 것을 환영합니다. 일지를 묻거나 오늘/어제 일지 생성을 요청해 보세요.\n"
+                "입력창 옆 Menu에서 /dashboard 로 대시보드를 열 수 있습니다.",
+                reply_markup=_remove_reply_keyboard(),
             )
             return
 
         await self._setup_dashboard_entry(chat_id)
-        welcome_markup = None if _is_https_url(self.config.public_dashboard_url) else _dashboard_reply_keyboard()
         await self.client.send_message(
             chat_id,
             "아직 대시보드 계정과 연결되지 않았습니다.\n"
             "1) 대시보드에서 텔레그램(수집) 연동\n"
             "2) 일지 화면 챗봇 헤더의 텔레그램 바로가기로 연결\n"
             "을 진행해 주세요.",
-            reply_markup=welcome_markup,
+            reply_markup=_remove_reply_keyboard(),
         )
 
     async def _handle_text(self, *, chat_id: int, tg_id: int, text: str) -> None:
         assert self.client is not None
-        if text.strip() == DASHBOARD_KEYBOARD_LABEL:
-            url = self.config.public_dashboard_url
-            await self.client.send_message(chat_id, f"대시보드: {url}")
+        stripped = text.strip()
+        if stripped == DASHBOARD_KEYBOARD_LABEL or stripped.startswith("/dashboard"):
+            await self._send_dashboard_link(chat_id, remove_keyboard=True)
             return
         user_id = resolve_account_by_telegram_id(self.config.data_root, tg_id)
         if not user_id:

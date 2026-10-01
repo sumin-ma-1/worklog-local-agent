@@ -1,0 +1,14 @@
+.venv
+.git
+data
+__pycache__
+*.pyc
+.pytest_cache
+tests
+*.png
+*.jpg
+*.zip
+.env
+data/
+agent-transcripts
+.cursor
