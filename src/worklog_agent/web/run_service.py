@@ -6,7 +6,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
-from worklog_agent.config import AppConfig
+from worklog_agent.config import AppConfig, numeric_chat_ids
 from worklog_agent.pipeline import Pipeline
 from worklog_agent.storage import Storage
 from worklog_agent.web.run_plan import dates_to_run, plan_run_days, resolve_run_dates
@@ -98,6 +98,7 @@ def build_plan(cfg: AppConfig, body: dict[str, Any]) -> list[dict]:
         force=bool(body.get("force")),
         generate_type=generate_type,
         tz_name=cfg.timezone,
+        chat_ids=numeric_chat_ids(cfg.telegram.chats) or None,
     )
 
 

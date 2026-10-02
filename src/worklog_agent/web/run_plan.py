@@ -143,6 +143,7 @@ def plan_run_days(
     force: bool = False,
     generate_type: str = "combined",
     tz_name: str = "Asia/Seoul",
+    chat_ids: set[int] | None = None,
 ) -> list[dict]:
     from worklog_agent.journal import normalize_generate_type
 
@@ -157,7 +158,9 @@ def plan_run_days(
         meta = read_journal_meta(storage, day) if has_journal else None
         previous_type = stored_generate_type(storage, day, meta) if has_journal else None
         type_changed = bool(has_journal and previous_type and previous_type != wanted)
-        current_fp = day_source_fingerprint(storage, day, tz_name) if has_journal else None
+        current_fp = (
+            day_source_fingerprint(storage, day, tz_name, chat_ids=chat_ids) if has_journal else None
+        )
         stored_fp = meta.get("source_fingerprint") if meta else None
         is_stale = bool(
             has_journal

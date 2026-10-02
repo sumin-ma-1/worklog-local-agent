@@ -24,6 +24,7 @@ from worklog_agent.config import (
     chat_ref_key,
     load_config,
     normalize_chat_ref,
+    numeric_chat_ids,
 )
 from worklog_agent.journal_prompt import (
     PromptError,
@@ -274,12 +275,7 @@ def _day_updated_at_iso(storage: Storage, day: str) -> str | None:
 
 
 def _library_updated_at_iso(storage: Storage) -> str | None:
-    dates = set(storage.list_journal_dates()) | set(storage.list_daily_dates())
-    try:
-        if storage.attachments.exists():
-            dates.update(path.name for path in storage.attachments.iterdir() if path.is_dir())
-    except OSError:
-        pass
+    dates = set(storage.list_day_dates())
     candidates: list[datetime] = []
     for day in dates:
         raw = _day_updated_at_iso(storage, day)
@@ -1115,7 +1111,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     async def journals(request: Request) -> dict:
         _, cfg = require_telegram(request)
         storage = Storage(cfg.data_root)
-        dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
+        dates = storage.list_day_dates()
         items = []
         for day in dates:
             share = share_for_day(cfg.data_root, day)
@@ -1141,7 +1137,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         if len(query) < 1:
             return {"journals": [], "query": q}
         storage = Storage(cfg.data_root)
-        dates = sorted(set(storage.list_journal_dates()) | set(storage.list_daily_dates()), reverse=True)
+        dates = storage.list_day_dates()
         hits: list[dict] = []
         for day in dates:
             haystacks: list[str] = [day]
@@ -1328,6 +1324,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             force=body.force,
             generate_type=generate_type,
             tz_name=cfg.timezone,
+            chat_ids=numeric_chat_ids(cfg.telegram.chats) or None,
         )
         return {
             "dates": dates,

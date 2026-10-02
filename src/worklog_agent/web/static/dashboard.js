@@ -1468,13 +1468,26 @@ function renderJournalDetail(data, { editing = false } = {}) {
   const attach = renderAttachmentItems(data.attachments, { groupByChat: groupAttach });
   const markdown = data.markdown || "";
   const hasJournal = Boolean(data.has_journal || markdown);
+  const attachCount = Array.isArray(data.attachments) ? data.attachments.length : 0;
+  const hasDayArtifacts = Boolean(hasJournal || data.has_daily || data.daily || attachCount);
+  const emptyBodyMessage = hasJournal
+    ? "일지 파일이 없습니다."
+    : attachCount
+      ? `일지 본문이 없고 첨부 ${attachCount}개만 있습니다.`
+      : data.has_daily || data.daily
+        ? "일지 본문이 없고 수집 데이터만 있습니다."
+        : "일지 파일이 없습니다.";
   const body = editing
     ? `<div class="journal-editor-wrap" id="journal-editor-wrap">
         <textarea id="journal-editor" class="journal-editor" spellcheck="false">${escapeHtml(markdown)}</textarea>
       </div>`
     : `<div class="list-scroll-wrap" id="journal-detail-wrap">
         <div class="list-scroll" id="journal-detail-scroll">
-          <div class="journal-body markdown-body">${renderMarkdown(stripJournalLeadHeading(markdown))}</div>
+          <div class="journal-body markdown-body">${
+            hasJournal
+              ? renderMarkdown(stripJournalLeadHeading(markdown))
+              : `<p class="empty">${escapeHtml(emptyBodyMessage)}</p>`
+          }</div>
         </div>
       </div>`;
   const actions = editing
@@ -1499,7 +1512,7 @@ function renderJournalDetail(data, { editing = false } = {}) {
       <button type="button" id="journal-edit" class="icon-btn" title="수정" aria-label="수정">
         <span class="material-symbols-outlined" aria-hidden="true">edit</span>
       </button>
-      <button type="button" id="journal-delete" class="icon-btn danger-icon" title="삭제" aria-label="삭제" ${hasJournal ? "" : "disabled"}>
+      <button type="button" id="journal-delete" class="icon-btn danger-icon" title="삭제" aria-label="삭제" ${hasDayArtifacts ? "" : "disabled"}>
         <span class="material-symbols-outlined" aria-hidden="true">delete</span>
       </button>
     `;
@@ -1733,12 +1746,19 @@ async function saveJournal(day, view = "all") {
 }
 
 async function deleteJournal(day) {
-  if (!window.confirm(`${day} 일지를 삭제할까요?`)) return;
+  const ok = await showConfirmToast(`${day} 일지를 삭제할까요?`, {
+    confirmLabel: "삭제",
+    cancelLabel: "취소",
+    confirmIcon: "delete",
+  });
+  if (!ok) return;
   try {
     await api(`/api/journals/${day}`, { method: "DELETE" });
     showBanner(`${day} 일지를 삭제했습니다.`, "ok");
     state.journalSelected = null;
+    state.journals = (state.journals || []).filter((item) => item.date !== day);
     renderJournalPlaceholder();
+    renderJournalBrowse();
     await loadJournals();
     await loadOverview();
     await syncRunStepsForSelectedDate();

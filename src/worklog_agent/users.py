@@ -459,6 +459,16 @@ def attachments_for_view(
         row["chat_title"] = chat_title
         enriched.append(row)
 
+    # When daily is known, hide attachments from chats that are no longer in the bundle.
+    if isinstance(daily, dict):
+        allowed_slugs = set(slug_to_title.keys())
+        if allowed_slugs:
+            enriched = [
+                row
+                for row in enriched
+                if not row.get("chat_slug") or row.get("chat_slug") in allowed_slugs
+            ]
+
     selected = str(view or "all").strip() or "all"
     if selected != "all":
         want_slug = id_to_slug.get(selected)
@@ -519,6 +529,7 @@ def journal_day_payload(storage: Any, day: str, *, view: str | None = None) -> d
         "markdown": markdown,
         "has_journal": has_journal,
         "has_combined": has_combined,
+        "has_daily": daily_payload is not None,
         "view": selected,
         "views": views,
         "daily": daily_payload,

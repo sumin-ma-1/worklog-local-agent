@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from worklog_agent.archive import archive_pending
 from worklog_agent.collect import collect_all
-from worklog_agent.config import AppConfig
+from worklog_agent.config import AppConfig, numeric_chat_ids
 from worklog_agent.journal import bundle_for_chat, generate_journal, normalize_generate_type
 from worklog_agent.ollama import (
     _model_already_loaded,
@@ -55,7 +55,13 @@ class Pipeline:
 
     def organize(self, day: str | None = None):
         resolved = target_day(day, self.config.timezone)
-        bundle = organize_day(self.storage, resolved, self.config.timezone)
+        watched = numeric_chat_ids(self.config.telegram.chats)
+        bundle = organize_day(
+            self.storage,
+            resolved,
+            self.config.timezone,
+            chat_ids=watched if watched else None,
+        )
         logger.info(
             "%s 정리: 채팅 %s, 메시지 %s, 첨부 %s",
             resolved,
@@ -78,6 +84,7 @@ class Pipeline:
         kind = normalize_generate_type(generate_type)
         await emit_progress(on_progress, f"{resolved} · 날짜별 정리 중", "organize")
         bundle = self.organize(resolved)
+        watched = numeric_chat_ids(self.config.telegram.chats)
         model_name = self.config.journal.ollama.model
         running = await list_running_model_names(self.config)
         if _model_already_loaded(model_name, running):
@@ -114,6 +121,20 @@ class Pipeline:
             primary_path = None
 
         if do_rooms:
+            allowed_ids = {str(chat.chat_id) for chat in bundle.chats}
+            if rooms_append:
+                # Drop room journals for chats no longer in the watched set / daily bundle.
+                pruned_rows: list[dict[str, str]] = []
+                for item in existing_room_rows:
+                    room_id = str(item["id"])
+                    if room_id in allowed_ids:
+                        pruned_rows.append(item)
+                        continue
+                    path = self.storage.room_journal_path(resolved, room_id)
+                    if path.exists():
+                        path.unlink(missing_ok=True)
+                existing_room_rows = pruned_rows
+
             existing_ids = {str(item["id"]) for item in existing_room_rows} if rooms_append else set()
             if rooms_append:
                 chats_to_write = [chat for chat in bundle.chats if str(chat.chat_id) not in existing_ids]
@@ -178,6 +199,7 @@ class Pipeline:
                 self.storage,
                 resolved,
                 self.config.timezone,
+                chat_ids=watched if watched else None,
             ),
             model=model,
             generate_type=kind,

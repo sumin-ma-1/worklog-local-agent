@@ -51,6 +51,22 @@ def test_build_daily_bundle_groups_by_local_date() -> None:
     assert titles == {"팀 업무방", "디자인"}
 
 
+def test_build_daily_bundle_filters_watched_chats() -> None:
+    messages = [
+        _msg(id=1, date=datetime(2026, 9, 2, 15, 1, tzinfo=timezone.utc), text="오늘"),
+        _msg(
+            id=2,
+            chat_id=-1002,
+            chat_title="디자인",
+            date=datetime(2026, 9, 2, 16, 0, tzinfo=timezone.utc),
+            text="시안",
+        ),
+    ]
+    bundle = build_daily_bundle(messages, "2026-09-03", "Asia/Seoul", chat_ids={-1001})
+    assert bundle.totals["chats"] == 1
+    assert bundle.chats[0].title == "팀 업무방"
+
+
 def test_storage_roundtrip(tmp_path: Path) -> None:
     storage = Storage(tmp_path)
     storage.ensure()

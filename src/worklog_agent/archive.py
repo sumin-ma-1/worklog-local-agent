@@ -39,9 +39,14 @@ def _local_day(record: MessageRecord, tz_name: str) -> str:
 
 
 async def archive_pending(config: AppConfig, storage: Storage, *, on_progress=None) -> int:
+    from worklog_agent.config import numeric_chat_ids
+
     storage.ensure()
+    watched = numeric_chat_ids(config.telegram.chats)
     pending: list[MessageRecord] = []
     for record in storage.load_all_messages():
+        if watched and record.chat_id not in watched:
+            continue
         if record.media and record.media.type in DOWNLOADABLE_MEDIA and not record.media.archived:
             pending.append(record)
     if not pending:

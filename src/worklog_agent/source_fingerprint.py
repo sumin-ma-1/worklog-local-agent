@@ -15,10 +15,17 @@ def _message_signature(record: MessageRecord) -> str:
     return f"{record.chat_id}:{record.id}:{len(record.text)}:{media}"
 
 
-def day_source_fingerprint(storage: Storage, day: str, tz_name: str) -> str:
+def day_source_fingerprint(
+    storage: Storage,
+    day: str,
+    tz_name: str,
+    *,
+    chat_ids: set[int] | None = None,
+) -> str:
     target = date.fromisoformat(day)
     signatures: list[str] = []
-    for chat_id in storage.iter_chat_ids():
+    ids = sorted(chat_ids) if chat_ids is not None else storage.iter_chat_ids()
+    for chat_id in ids:
         for record in storage.read_messages(chat_id):
             if to_local_date(record.date, tz_name) != target:
                 continue

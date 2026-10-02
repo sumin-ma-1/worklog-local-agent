@@ -24,12 +24,16 @@ def build_daily_bundle(
     messages: list[MessageRecord],
     day: str,
     tz_name: str,
+    *,
+    chat_ids: set[int] | None = None,
 ) -> DailyBundle:
     target = date.fromisoformat(day)
     grouped: dict[int, list[MessageRecord]] = defaultdict(list)
     titles: dict[int, str] = {}
 
     for record in messages:
+        if chat_ids is not None and record.chat_id not in chat_ids:
+            continue
         if to_local_date(record.date, tz_name) != target:
             continue
         grouped[record.chat_id].append(record)
@@ -71,7 +75,19 @@ def build_daily_bundle(
     )
 
 
-def organize_day(storage: Storage, day: str, tz_name: str) -> DailyBundle:
-    bundle = build_daily_bundle(storage.load_all_messages(), day, tz_name)
+def organize_day(
+    storage: Storage,
+    day: str,
+    tz_name: str,
+    *,
+    chat_ids: set[int] | None = None,
+) -> DailyBundle:
+    if chat_ids is None:
+        messages = storage.load_all_messages()
+    else:
+        messages = []
+        for chat_id in sorted(chat_ids):
+            messages.extend(storage.read_messages(chat_id))
+    bundle = build_daily_bundle(messages, day, tz_name, chat_ids=chat_ids)
     storage.save_daily(bundle)
     return bundle

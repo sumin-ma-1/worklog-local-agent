@@ -219,6 +219,7 @@ class Storage:
         return not root.exists()
 
     def delete_journal(self, day: str) -> bool:
+        """Remove journal markdown, room journals, daily bundle, and day attachments."""
         removed = False
         path = self.journal_path(day)
         if path.exists():
@@ -226,12 +227,39 @@ class Storage:
             removed = True
         if self.clear_room_journals(day):
             removed = True
+        daily = self.daily_path(day)
+        if daily.exists():
+            daily.unlink(missing_ok=True)
+            removed = True
+        attach_dir = self.attachments / day
+        if attach_dir.exists():
+            shutil.rmtree(attach_dir, ignore_errors=True)
+            if not attach_dir.exists():
+                removed = True
         return removed
 
     def list_daily_dates(self) -> list[str]:
         if not self.daily.exists():
             return []
         return sorted((path.stem for path in self.daily.glob("*.json")), reverse=True)
+
+    def list_attachment_dates(self) -> list[str]:
+        if not self.attachments.exists():
+            return []
+        days: list[str] = []
+        for path in self.attachments.iterdir():
+            if path.is_dir() and len(path.name) == 10 and path.name[4] == "-" and path.name[7] == "-":
+                days.append(path.name)
+        return sorted(days, reverse=True)
+
+    def list_day_dates(self) -> list[str]:
+        """Dates that have a journal, daily bundle, or attachments."""
+        return sorted(
+            set(self.list_journal_dates())
+            | set(self.list_daily_dates())
+            | set(self.list_attachment_dates()),
+            reverse=True,
+        )
 
     def list_attachments(self, day: str | None = None) -> list[dict[str, str]]:
         root = self.attachments

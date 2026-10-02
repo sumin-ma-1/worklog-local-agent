@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
 
 import yaml
@@ -229,6 +230,19 @@ def normalize_chat_ref(value: str | int) -> int | str:
 
 def chat_ref_key(value: str | int) -> str:
     return str(normalize_chat_ref(value))
+
+
+def numeric_chat_ids(chats: Iterable[str | int]) -> set[int]:
+    """Return only integer Telegram chat IDs from a watched-chat list."""
+    ids: set[int] = set()
+    for item in chats:
+        try:
+            ref = normalize_chat_ref(item)
+        except ValueError:
+            continue
+        if isinstance(ref, int):
+            ids.add(ref)
+    return ids
 
 
 def save_config(config: AppConfig) -> None:
