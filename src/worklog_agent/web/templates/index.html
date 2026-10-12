@@ -7,7 +7,7 @@
   <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" sizes="180x180">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
-  <link rel="stylesheet" href="/static/dashboard.css?v=attach-group-1">
+  <link rel="stylesheet" href="/static/dashboard.css?v=journal-chat-float-10">
 </head>
 <body class="login-mode">
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
@@ -201,8 +201,11 @@
           </div>
         </div>
 
-        <div id="journal-chat-panel" class="journal-chat-panel hidden" aria-hidden="true">
-          <div class="journal-chat-head">
+        <div id="journal-chat-panel" class="journal-chat-panel is-floating hidden" data-layout-panel="chat" aria-hidden="true">
+          <button type="button" class="layout-panel-hide" data-hide-panel="chat" title="챗봇 숨기기" aria-label="챗봇 숨기기">
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+          <div class="journal-chat-head" id="journal-chat-drag">
             <div class="journal-chat-head-title">
               <strong>Worklog 에이전트</strong>
               <a id="journal-chat-bot-link" class="journal-chat-bot-link hidden" href="#" target="_blank" rel="noopener noreferrer" title="텔레그램 봇 열기" aria-label="텔레그램 봇 열기">
@@ -211,9 +214,14 @@
                 </svg>
               </a>
             </div>
-            <button type="button" id="journal-chat-close" class="icon-btn" title="닫기" aria-label="닫기">
-              <span class="material-symbols-outlined" aria-hidden="true">close</span>
-            </button>
+            <div class="journal-chat-head-actions">
+              <button type="button" id="journal-chat-mode" class="icon-btn" title="고정 패널로" aria-label="고정 패널로">
+                <span class="material-symbols-outlined" aria-hidden="true">keep</span>
+              </button>
+              <button type="button" id="journal-chat-close" class="icon-btn" title="닫기" aria-label="닫기">
+                <span class="material-symbols-outlined" aria-hidden="true">close</span>
+              </button>
+            </div>
           </div>
           <div id="journal-chat-body" class="journal-chat-body">
             <div id="journal-chat-empty" class="journal-chat-empty" aria-hidden="false">
@@ -227,6 +235,9 @@
               <span class="material-symbols-outlined" aria-hidden="true">arrow_upward</span>
             </button>
           </form>
+          <div class="journal-chat-resize" data-dir="e" title="너비 조절" aria-hidden="true"></div>
+          <div class="journal-chat-resize" data-dir="s" title="높이 조절" aria-hidden="true"></div>
+          <button type="button" class="journal-chat-resize journal-chat-resize-grip" data-dir="se" title="크기 조절" aria-label="크기 조절"></button>
         </div>
 
         <nav class="journal-dock is-edge-top" id="journal-dock" aria-label="일지 도구" title="가장자리 빈 곳을 끌어 이동">
@@ -696,6 +707,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-  <script src="/static/dashboard.js?v=journal-delete-attach-2"></script>
+  <script src="/static/dashboard.js?v=journal-chat-float-6"></script>
 </body>
 </html>

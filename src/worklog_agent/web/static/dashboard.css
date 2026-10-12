@@ -940,6 +940,34 @@ main {
   max-width: none;
 }
 
+#view-journals .split.has-chat-column {
+  grid-template-columns: minmax(220px, 300px) minmax(260px, 340px) minmax(0, 1fr);
+}
+
+#view-journals .split.has-chat-column > .journal-chat-panel.is-fixed.is-slot-column {
+  min-width: 0;
+  height: 100%;
+  align-self: stretch;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#view-journals .split.has-chat-column.is-detail-only {
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+}
+
+#view-journals .split.has-chat-column.is-detail-only .journal-chat-panel.is-fixed.is-slot-column {
+  grid-column: 1;
+}
+
+#view-journals .split.has-chat-column.is-detail-only .journal-detail-panel {
+  grid-column: 2;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
 .journal-browse {
   display: flex;
   flex-direction: column;
@@ -986,7 +1014,8 @@ main {
 }
 
 #view-journals.is-layout-editing .journal-calendar-panel,
-#view-journals.is-layout-editing .journal-list-panel {
+#view-journals.is-layout-editing .journal-list-panel,
+#view-journals.is-layout-editing .journal-chat-panel.is-fixed {
   outline: 2px dashed rgba(30, 58, 138, 0.35);
   outline-offset: -2px;
   animation: layout-panel-jiggle 0.85s ease-in-out infinite;
@@ -996,7 +1025,8 @@ main {
 }
 
 #view-journals.is-layout-editing .journal-calendar-panel:nth-child(2),
-#view-journals.is-layout-editing .journal-list-panel:nth-child(2) {
+#view-journals.is-layout-editing .journal-list-panel:nth-child(2),
+#view-journals.is-layout-editing .journal-chat-panel.is-fixed:nth-child(2) {
   animation-delay: 0.08s;
 }
 
@@ -1009,9 +1039,19 @@ main {
 }
 
 #view-journals.is-layout-editing .journal-calendar-panel:active,
-#view-journals.is-layout-editing .journal-list-panel:active {
+#view-journals.is-layout-editing .journal-list-panel:active,
+#view-journals.is-layout-editing .journal-chat-panel.is-fixed:active {
   cursor: grabbing;
   animation: none;
+}
+
+#view-journals.is-layout-editing .journal-detail-panel.is-drop-target,
+#view-journals.is-layout-editing .journal-browse.is-drop-target,
+#view-journals.is-layout-editing .journal-calendar-panel.is-drop-target,
+#view-journals.is-layout-editing .journal-list-panel.is-drop-target,
+#view-journals.is-layout-editing .journal-chat-panel.is-fixed.is-drop-target {
+  outline-color: rgba(30, 58, 138, 0.7);
+  background-image: linear-gradient(180deg, rgba(30, 58, 138, 0.04), transparent 40%);
 }
 
 @keyframes layout-panel-jiggle {
@@ -1026,7 +1066,8 @@ main {
 
 @media (prefers-reduced-motion: reduce) {
   #view-journals.is-layout-editing .journal-calendar-panel,
-  #view-journals.is-layout-editing .journal-list-panel {
+  #view-journals.is-layout-editing .journal-list-panel,
+  #view-journals.is-layout-editing .journal-chat-panel.is-fixed {
     animation: none;
   }
 }
@@ -1212,14 +1253,7 @@ main {
 }
 
 .journal-chat-panel {
-  position: absolute;
-  left: 50%;
-  top: 28px;
-  bottom: auto;
-  transform: translateX(-50%);
-  z-index: 36;
-  width: min(460px, calc(100% - 24px));
-  max-height: min(320px, 48vh);
+  position: relative;
   display: flex;
   flex-direction: column;
   background: #fff;
@@ -1227,7 +1261,84 @@ main {
   border-radius: 16px;
   box-shadow: 0 16px 40px rgba(15, 27, 45, 0.16);
   overflow: hidden;
-  transition: max-height 0.22s ease;
+  min-width: 280px;
+  min-height: 220px;
+}
+
+.journal-chat-panel.is-floating {
+  position: absolute;
+  left: 50%;
+  top: 56px;
+  bottom: auto;
+  right: auto;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: min(420px, calc(100% - 24px));
+  height: min(360px, 52vh);
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px);
+  overflow: hidden;
+  resize: none;
+}
+
+.journal-chat-panel.is-floating > .journal-chat-head,
+.journal-chat-panel.is-floating > .journal-chat-body,
+.journal-chat-panel.is-floating > .journal-chat-form {
+  background: #fff;
+}
+
+.journal-chat-panel.is-floating > .journal-chat-head {
+  border-radius: 16px 16px 0 0;
+}
+
+.journal-chat-panel.is-floating > .journal-chat-form {
+  border-radius: 0 0 16px 16px;
+}
+
+.journal-chat-panel.is-floating.is-dragging,
+.journal-chat-panel.is-floating.is-resizing {
+  transition: none;
+  user-select: none;
+}
+
+.journal-chat-panel.is-fixed {
+  position: relative;
+  left: auto;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  transform: none;
+  z-index: 1;
+  width: auto;
+  max-width: none;
+  max-height: none;
+  min-height: 0;
+  align-self: stretch;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(15, 27, 45, 0.08);
+}
+
+.journal-chat-panel.is-fixed #journal-chat-close {
+  display: none !important;
+}
+
+.journal-chat-panel.is-fixed.is-slot-column {
+  height: 100%;
+}
+
+.journal-chat-panel.is-fixed.is-slot-calendar {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 260px;
+  max-height: min(42vh, 360px);
+  padding: 0;
+}
+
+.journal-chat-panel.is-fixed.is-slot-list {
+  flex: 1 1 0%;
+  height: auto;
+  min-height: 0;
+  padding: 0;
 }
 
 .journal-chat-panel.hidden {
@@ -1242,6 +1353,71 @@ main {
   padding: 10px 12px 8px;
   border-bottom: 0;
   flex: 0 0 auto;
+}
+
+.journal-chat-panel.is-floating .journal-chat-head {
+  cursor: grab;
+  touch-action: none;
+}
+
+.journal-chat-panel.is-floating.is-dragging .journal-chat-head {
+  cursor: grabbing;
+}
+
+.journal-chat-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+}
+
+.journal-chat-resize {
+  display: none;
+}
+
+.journal-chat-panel.is-floating .journal-chat-resize {
+  display: block;
+  position: absolute;
+  z-index: 70;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.journal-chat-panel.is-floating .journal-chat-resize[data-dir="e"] {
+  top: 44px;
+  right: 0;
+  width: 10px;
+  bottom: 28px;
+  cursor: ew-resize;
+}
+
+.journal-chat-panel.is-floating .journal-chat-resize[data-dir="s"] {
+  left: 12px;
+  right: 28px;
+  bottom: 0;
+  height: 10px;
+  cursor: ns-resize;
+}
+
+.journal-chat-panel.is-floating .journal-chat-resize-grip,
+.journal-chat-panel.is-floating .journal-chat-resize[data-dir="se"] {
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  border-radius: 0 0 16px 0;
+  background: transparent;
+}
+
+.journal-chat-panel.is-fixed .journal-chat-resize {
+  display: none !important;
 }
 
 .journal-chat-head-title {
@@ -1284,7 +1460,7 @@ main {
 .journal-chat-body {
   position: relative;
   flex: 1 1 auto;
-  min-height: 160px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1345,8 +1521,8 @@ main {
 
 .journal-chat-log {
   flex: 1;
-  min-height: 160px;
-  max-height: 180px;
+  min-height: 0;
+  max-height: none;
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
@@ -1354,7 +1530,6 @@ main {
   gap: 8px;
   align-content: start;
   scrollbar-width: none;
-  transition: max-height 0.22s ease;
 }
 
 .journal-chat-log::-webkit-scrollbar {
@@ -1513,10 +1688,24 @@ main {
 
 .journal-calendar-panel {
   flex: 0 0 auto;
+  height: auto;
+  max-height: none;
+  align-self: stretch;
   min-height: 0;
   padding: 14px;
   overflow: visible;
   z-index: 2;
+}
+
+/* Calendar stays content-sized everywhere (never stretches to fill a tall column). */
+.journal-calendar-panel.is-side-column,
+#view-journals .split.has-chat-column > .journal-calendar-panel,
+#view-journals .journal-browse > .journal-calendar-panel {
+  flex: 0 0 auto;
+  height: auto !important;
+  max-height: none;
+  align-self: flex-start;
+  width: 100%;
 }
 
 .journal-list-panel {
@@ -4433,6 +4622,14 @@ button.schedule-add-btn {
   #view-chats .split,
   #view-journals .split {
     align-items: start;
+  }
+  #view-journals .split.has-chat-column,
+  #view-journals .split.has-chat-column.is-detail-only {
+    grid-template-columns: 1fr;
+  }
+  .journal-chat-panel.is-fixed {
+    height: min(52vh, 480px);
+    max-height: min(52vh, 480px);
   }
   .dialogs-panel {
     max-height: min(60vh, 560px);

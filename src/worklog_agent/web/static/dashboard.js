@@ -44,8 +44,20 @@ const state = {
     listFirst: false,
     editing: false,
     chatOpen: false,
+    chatMode: "floating",
+    chatSlot: "column",
   },
 };
+
+const JOURNAL_CHAT_GEOM_KEY = "worklog.journalChatGeom";
+const journalChatGeom = {
+  left: null,
+  top: null,
+  width: 420,
+  height: 360,
+  custom: false,
+};
+let journalChatGesture = null;
 
 let toastTimer = null;
 let toastConfirmResolver = null;
@@ -1769,6 +1781,12 @@ async function deleteJournal(day) {
 
 const JOURNAL_LAYOUT_KEY = "worklog.journalLayout";
 
+function normalizeChatSlot(slot) {
+  return slot === "calendar" || slot === "list" || slot === "stack" || slot === "column"
+    ? slot
+    : "column";
+}
+
 function readJournalLayout() {
   try {
     const raw = JSON.parse(localStorage.getItem(JOURNAL_LAYOUT_KEY) || "{}");
@@ -1776,10 +1794,13 @@ function readJournalLayout() {
       state.journalLayout.showCalendar = raw.showCalendar !== false;
       state.journalLayout.showList = raw.showList !== false;
       state.journalLayout.listFirst = Boolean(raw.listFirst);
+      state.journalLayout.chatMode = raw.chatMode === "fixed" ? "fixed" : "floating";
+      state.journalLayout.chatSlot = normalizeChatSlot(raw.chatSlot);
     }
   } catch (_) {
     /* ignore */
   }
+  readJournalChatGeom();
 }
 
 function persistJournalLayout() {
@@ -1790,8 +1811,36 @@ function persistJournalLayout() {
         showCalendar: state.journalLayout.showCalendar,
         showList: state.journalLayout.showList,
         listFirst: state.journalLayout.listFirst,
+        chatMode: state.journalLayout.chatMode === "fixed" ? "fixed" : "floating",
+        chatSlot: normalizeChatSlot(state.journalLayout.chatSlot),
       })
     );
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function readJournalChatGeom() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(JOURNAL_CHAT_GEOM_KEY) || "{}");
+    if (!raw || typeof raw !== "object") return;
+    const width = Number(raw.width);
+    const height = Number(raw.height);
+    const left = Number(raw.left);
+    const top = Number(raw.top);
+    if (Number.isFinite(width)) journalChatGeom.width = Math.min(900, Math.max(280, width));
+    if (Number.isFinite(height)) journalChatGeom.height = Math.min(900, Math.max(220, height));
+    if (Number.isFinite(left)) journalChatGeom.left = left;
+    if (Number.isFinite(top)) journalChatGeom.top = top;
+    journalChatGeom.custom = Boolean(raw.custom) || Number.isFinite(left) || Number.isFinite(top);
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function persistJournalChatGeom() {
+  try {
+    localStorage.setItem(JOURNAL_CHAT_GEOM_KEY, JSON.stringify(journalChatGeom));
   } catch (_) {
     /* ignore */
   }
@@ -1805,17 +1854,52 @@ function applyJournalLayout() {
   const list = $("#journal-list-panel");
   const layout = state.journalLayout;
   if (!view) return;
-  const browseHidden = !layout.showCalendar && !layout.showList;
+
+  const chatFixed = Boolean(layout.chatOpen && layout.chatMode === "fixed");
+  let slot = normalizeChatSlot(layout.chatSlot);
+  // Stacked chat needs at least one browse panel (or stays stacked alone); else fall back to column.
+  if (
+    chatFixed &&
+    (slot === "calendar" || slot === "list" || slot === "stack") &&
+    !layout.showCalendar &&
+    !layout.showList
+  ) {
+    layout.chatSlot = "column";
+    slot = "column";
+  } else if (chatFixed && slot === "calendar" && !layout.showCalendar) {
+    slot = layout.showList ? "list" : "stack";
+    layout.chatSlot = slot;
+  } else if (chatFixed && slot === "list" && !layout.showList) {
+    slot = layout.showCalendar ? "calendar" : "stack";
+    layout.chatSlot = slot;
+  }
+  slot = normalizeChatSlot(layout.chatSlot);
+
+  const showCal = Boolean(layout.showCalendar);
+  const showList = Boolean(layout.showList);
+  // calendar/list/stack = chat sits in the browse column with the other panels (no displacement).
+  const chatInBrowse = chatFixed && slot !== "column";
+  const hasSideColumn = chatFixed && slot === "column";
+  const browseHidden = !showCal && !showList && !chatInBrowse;
+
   view.classList.toggle("is-layout-editing", Boolean(layout.editing));
-  cal?.classList.toggle("is-hidden-panel", !layout.showCalendar);
-  list?.classList.toggle("is-hidden-panel", !layout.showList);
+  cal?.classList.toggle("is-hidden-panel", !showCal);
+  list?.classList.toggle("is-hidden-panel", !showList);
+  cal?.classList.remove("is-side-column");
+  list?.classList.remove("is-side-column");
   browse?.classList.toggle("is-list-first", Boolean(layout.listFirst));
   browse?.classList.toggle("hidden", browseHidden);
+  // Browse empty: collapse to chat-column+detail or detail-only.
   split?.classList.toggle("is-detail-only", browseHidden);
+  split?.classList.toggle("has-chat-column", hasSideColumn);
 
-  ["journal-calendar-panel", "journal-list-panel"].forEach((id) => {
+  ["journal-calendar-panel", "journal-list-panel", "journal-chat-panel"].forEach((id) => {
     const el = document.getElementById(id);
-    if (el) el.draggable = Boolean(layout.editing);
+    if (!el) return;
+    const enable =
+      Boolean(layout.editing) &&
+      (id !== "journal-chat-panel" || (chatFixed && layout.chatOpen));
+    el.draggable = enable;
   });
 
   const calBtn = $(`.journal-dock-btn[data-dock="calendar"]`);
@@ -1843,10 +1927,286 @@ function applyJournalLayout() {
     chatBtn.classList.toggle("is-active", Boolean(layout.chatOpen));
     chatBtn.setAttribute("aria-pressed", layout.chatOpen ? "true" : "false");
   }
-  const chat = $("#journal-chat-panel");
-  chat?.classList.toggle("hidden", !layout.chatOpen);
-  chat?.setAttribute("aria-hidden", layout.chatOpen ? "false" : "true");
+  applyJournalChatPlacement();
   scheduleJournalScrollFade();
+}
+
+function isJournalChatFixed() {
+  return state.journalLayout.chatMode === "fixed";
+}
+
+function syncJournalChatModeButton() {
+  const btn = $("#journal-chat-mode");
+  const icon = btn?.querySelector?.(".material-symbols-outlined");
+  if (!btn) return;
+  const fixed = isJournalChatFixed();
+  btn.title = fixed ? "떠다니는 창으로" : "고정 패널로";
+  btn.setAttribute("aria-label", btn.title);
+  if (icon) icon.textContent = fixed ? "keep_off" : "keep";
+}
+
+function restoreBrowsePanels() {
+  const browse = $("#journal-browse");
+  const cal = $("#journal-calendar-panel");
+  const list = $("#journal-list-panel");
+  if (!browse) return;
+  const listFirst = Boolean(state.journalLayout.listFirst);
+  // Put calendar/list back into browse before placing chat / side column.
+  if (cal && cal.parentElement !== browse) {
+    if (listFirst && list?.parentElement === browse) browse.appendChild(cal);
+    else if (list?.parentElement === browse) browse.insertBefore(cal, list);
+    else browse.appendChild(cal);
+  }
+  if (list && list.parentElement !== browse) {
+    if (listFirst && cal?.parentElement === browse) browse.insertBefore(list, cal);
+    else browse.appendChild(list);
+  }
+}
+
+function placeSideColumnPanel(el) {
+  const split = $("#journal-split");
+  const browse = $("#journal-browse");
+  const detail = $("#journal-detail");
+  if (!el || !split) return;
+  if (browse && browse.parentElement === split && !browse.classList.contains("hidden")) {
+    browse.after(el);
+  } else if (detail && detail.parentElement === split) {
+    split.insertBefore(el, detail);
+  } else {
+    split.appendChild(el);
+  }
+}
+
+function mountJournalChatPanel(mode, slot = "column") {
+  const panel = $("#journal-chat-panel");
+  const split = $("#journal-split");
+  const view = $("#view-journals");
+  const browse = $("#journal-browse");
+  const cal = $("#journal-calendar-panel");
+  const list = $("#journal-list-panel");
+  if (!panel || !split || !view) return;
+
+  restoreBrowsePanels();
+
+  if (mode !== "fixed") {
+    if (panel.parentElement !== view) {
+      const dock = $("#journal-dock");
+      if (dock) view.insertBefore(panel, dock);
+      else view.appendChild(panel);
+    }
+    return;
+  }
+
+  const showCal = Boolean(state.journalLayout.showCalendar);
+  const showList = Boolean(state.journalLayout.showList);
+
+  // Stack chat into the browse column (fills empty gap under/above other panels).
+  if (slot !== "column" && browse) {
+    if (slot === "calendar" && showCal && cal?.parentElement === browse) {
+      browse.insertBefore(panel, cal);
+    } else if (slot === "list" && showList && list?.parentElement === browse) {
+      browse.insertBefore(panel, list);
+    } else if (slot === "list" && showList) {
+      browse.appendChild(panel);
+    } else if (showCal && cal?.parentElement === browse) {
+      // stack / fallback: sit above calendar so the empty space under chat is filled by cal/list
+      browse.insertBefore(panel, cal);
+    } else if (showList && list?.parentElement === browse) {
+      browse.insertBefore(panel, list);
+    } else {
+      browse.insertBefore(panel, browse.firstChild);
+    }
+    return;
+  }
+
+  // column: full-height lane between browse and detail (or left of detail if browse hidden)
+  placeSideColumnPanel(panel);
+}
+
+function clearFloatingChatInlineStyles(panel) {
+  if (!panel) return;
+  panel.style.left = "";
+  panel.style.top = "";
+  panel.style.right = "";
+  panel.style.bottom = "";
+  panel.style.width = "";
+  panel.style.height = "";
+  panel.style.transform = "";
+  panel.style.maxWidth = "";
+  panel.style.maxHeight = "";
+}
+
+function clampFloatingChatGeom(viewRect) {
+  const pad = 8;
+  const maxW = Math.max(280, viewRect.width - pad * 2);
+  const maxH = Math.max(220, viewRect.height - pad * 2);
+  journalChatGeom.width = Math.min(maxW, Math.max(280, journalChatGeom.width || 420));
+  journalChatGeom.height = Math.min(maxH, Math.max(220, journalChatGeom.height || 360));
+  if (!Number.isFinite(journalChatGeom.left)) {
+    journalChatGeom.left = Math.max(pad, (viewRect.width - journalChatGeom.width) / 2);
+  }
+  if (!Number.isFinite(journalChatGeom.top)) {
+    journalChatGeom.top = 56;
+  }
+  journalChatGeom.left = Math.min(
+    Math.max(pad, journalChatGeom.left),
+    Math.max(pad, viewRect.width - journalChatGeom.width - pad)
+  );
+  journalChatGeom.top = Math.min(
+    Math.max(pad, journalChatGeom.top),
+    Math.max(pad, viewRect.height - journalChatGeom.height - pad)
+  );
+}
+
+function rectsOverlap(a, b, gap = 10) {
+  return !(
+    a.right + gap <= b.left ||
+    a.left - gap >= b.right ||
+    a.bottom + gap <= b.top ||
+    a.top - gap >= b.bottom
+  );
+}
+
+function avoidDockOverlapForChat() {
+  if (!state.journalLayout.chatOpen || isJournalChatFixed()) return;
+  if (journalChatGesture) return;
+  const panel = $("#journal-chat-panel");
+  const dock = $("#journal-dock");
+  const view = $("#view-journals");
+  if (!panel || !dock || !view || panel.classList.contains("hidden")) return;
+  const viewRect = view.getBoundingClientRect();
+  const dockRect = dock.getBoundingClientRect();
+  const chatRect = {
+    left: viewRect.left + journalChatGeom.left,
+    top: viewRect.top + journalChatGeom.top,
+    right: viewRect.left + journalChatGeom.left + journalChatGeom.width,
+    bottom: viewRect.top + journalChatGeom.top + journalChatGeom.height,
+  };
+  if (!rectsOverlap(chatRect, dockRect, 12)) return;
+  const below = dockRect.bottom - viewRect.top + 12;
+  const above = dockRect.top - viewRect.top - journalChatGeom.height - 12;
+  const right = dockRect.right - viewRect.left + 12;
+  const left = dockRect.left - viewRect.left - journalChatGeom.width - 12;
+  const pad = 8;
+  const maxTop = Math.max(pad, viewRect.height - journalChatGeom.height - pad);
+  const maxLeft = Math.max(pad, viewRect.width - journalChatGeom.width - pad);
+  if (below <= maxTop) {
+    journalChatGeom.top = Math.min(maxTop, Math.max(pad, below));
+  } else if (above >= pad) {
+    journalChatGeom.top = Math.min(maxTop, Math.max(pad, above));
+  } else if (right <= maxLeft) {
+    journalChatGeom.left = Math.min(maxLeft, Math.max(pad, right));
+  } else if (left >= pad) {
+    journalChatGeom.left = Math.min(maxLeft, Math.max(pad, left));
+  } else {
+    journalChatGeom.top = Math.min(maxTop, Math.max(pad, below));
+  }
+  journalChatGeom.custom = true;
+}
+
+function syncFloatingChatGeomFromDom() {
+  const panel = $("#journal-chat-panel");
+  const view = $("#view-journals");
+  if (!panel || !view || isJournalChatFixed() || !state.journalLayout.chatOpen) return;
+  if (journalChatGesture) return;
+  const viewRect = view.getBoundingClientRect();
+  const rect = panel.getBoundingClientRect();
+  journalChatGeom.left = rect.left - viewRect.left;
+  journalChatGeom.top = rect.top - viewRect.top;
+  journalChatGeom.width = rect.width;
+  journalChatGeom.height = rect.height;
+  journalChatGeom.custom = true;
+  clampFloatingChatGeom(viewRect);
+}
+
+function applyFloatingChatGeom() {
+  const panel = $("#journal-chat-panel");
+  const view = $("#view-journals");
+  if (!panel || !view || isJournalChatFixed() || !state.journalLayout.chatOpen) return;
+  const viewRect = view.getBoundingClientRect();
+  clampFloatingChatGeom(viewRect);
+  avoidDockOverlapForChat();
+  clampFloatingChatGeom(viewRect);
+  panel.style.transform = "none";
+  panel.style.left = `${Math.round(journalChatGeom.left)}px`;
+  panel.style.top = `${Math.round(journalChatGeom.top)}px`;
+  panel.style.width = `${Math.round(journalChatGeom.width)}px`;
+  panel.style.height = `${Math.round(journalChatGeom.height)}px`;
+  panel.style.right = "auto";
+  panel.style.bottom = "auto";
+  panel.style.maxWidth = `${Math.round(viewRect.width - 16)}px`;
+  panel.style.maxHeight = `${Math.round(viewRect.height - 16)}px`;
+}
+
+function applyJournalChatPlacement() {
+  const layout = state.journalLayout;
+  const panel = $("#journal-chat-panel");
+  const split = $("#journal-split");
+  if (!panel) return;
+  const open = Boolean(layout.chatOpen);
+  const fixed = layout.chatMode === "fixed";
+  let slot = normalizeChatSlot(layout.chatSlot);
+  if (
+    fixed &&
+    (slot === "calendar" || slot === "list" || slot === "stack") &&
+    !layout.showCalendar &&
+    !layout.showList
+  ) {
+    slot = "column";
+    layout.chatSlot = "column";
+  }
+  mountJournalChatPanel(open && fixed ? "fixed" : "floating", slot);
+  panel.classList.toggle("hidden", !open);
+  panel.setAttribute("aria-hidden", open ? "false" : "true");
+  panel.classList.toggle("is-fixed", open && fixed);
+  panel.classList.toggle("is-floating", !(open && fixed));
+  panel.classList.toggle("is-slot-column", open && fixed && slot === "column");
+  panel.classList.toggle("is-slot-calendar", open && fixed && (slot === "calendar" || slot === "stack"));
+  panel.classList.toggle("is-slot-list", open && fixed && slot === "list");
+  split?.classList.toggle("has-chat-column", open && fixed && slot === "column");
+  syncJournalChatModeButton();
+  if (!open) {
+    clearFloatingChatInlineStyles(panel);
+    return;
+  }
+  if (fixed) {
+    clearFloatingChatInlineStyles(panel);
+  } else {
+    applyFloatingChatGeom();
+  }
+}
+
+function setJournalChatMode(mode, slot) {
+  const next = mode === "fixed" ? "fixed" : "floating";
+  state.journalLayout.chatMode = next;
+  if (next === "fixed") {
+    // Pinning always starts as a full-height column beside browse.
+    state.journalLayout.chatSlot = normalizeChatSlot(slot || "column");
+  }
+  persistJournalLayout();
+  applyJournalLayout();
+  if (state.journalLayout.chatOpen && state.journalLayout.chatMode === "floating") {
+    persistJournalChatGeom();
+  }
+  scheduleJournalScrollFade();
+}
+
+function setJournalChatSlot(slot) {
+  if (!isJournalChatFixed()) {
+    state.journalLayout.chatMode = "fixed";
+  }
+  state.journalLayout.chatSlot = normalizeChatSlot(slot);
+  if (
+    (state.journalLayout.chatSlot === "calendar" ||
+      state.journalLayout.chatSlot === "list" ||
+      state.journalLayout.chatSlot === "stack") &&
+    !state.journalLayout.showCalendar &&
+    !state.journalLayout.showList
+  ) {
+    state.journalLayout.chatSlot = "column";
+  }
+  persistJournalLayout();
+  applyJournalLayout();
 }
 
 function journalChatDisplayName() {
@@ -1874,14 +2234,11 @@ function syncJournalChatEmpty() {
 }
 
 function syncJournalChatSize() {
-  const panel = $("#journal-chat-panel");
   const log = $("#journal-chat-log");
-  if (!panel || !log) return;
-  const count = log.querySelectorAll(".journal-chat-msg").length;
-  const logMax = Math.min(560, Math.max(160, 160 + count * 42));
-  const panelMax = Math.min(Math.round(window.innerHeight * 0.78), logMax + 118);
-  log.style.maxHeight = `${logMax}px`;
-  panel.style.maxHeight = `${panelMax}px`;
+  if (log) log.style.maxHeight = "";
+  if (state.journalLayout.chatOpen && !isJournalChatFixed()) {
+    applyFloatingChatGeom();
+  }
 }
 
 function isShortChatText(text) {
@@ -1923,6 +2280,121 @@ function setJournalChatOpen(open) {
     scheduleJournalScrollFade();
     $("#journal-chat-input")?.focus();
   }
+}
+
+function initJournalChatWindow() {
+  const panel = $("#journal-chat-panel");
+  const head = $("#journal-chat-drag");
+  if (!panel || !head) return;
+
+  const onMove = (event) => {
+    if (!journalChatGesture) return;
+    const view = $("#view-journals");
+    if (!view) return;
+    const viewRect = view.getBoundingClientRect();
+    if (journalChatGesture.type === "drag") {
+      journalChatGeom.left = event.clientX - viewRect.left - journalChatGesture.offsetX;
+      journalChatGeom.top = event.clientY - viewRect.top - journalChatGesture.offsetY;
+      journalChatGeom.custom = true;
+      applyFloatingChatGeom();
+      return;
+    }
+    if (journalChatGesture.type === "resize") {
+      const start = journalChatGesture;
+      if (start.dir.includes("e")) {
+        journalChatGeom.width = start.width + (event.clientX - start.originX);
+      }
+      if (start.dir.includes("s")) {
+        journalChatGeom.height = start.height + (event.clientY - start.originY);
+      }
+      journalChatGeom.left = start.left;
+      journalChatGeom.top = start.top;
+      journalChatGeom.custom = true;
+      applyFloatingChatGeom();
+    }
+  };
+
+  const onUp = () => {
+    if (!journalChatGesture) return;
+    panel.classList.remove("is-dragging", "is-resizing");
+    journalChatGesture = null;
+    persistJournalChatGeom();
+    // Final settle away from dock after gesture ends.
+    applyFloatingChatGeom();
+    persistJournalChatGeom();
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    window.removeEventListener("pointercancel", onUp);
+  };
+
+  const beginGesture = () => {
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  };
+
+  head.addEventListener("pointerdown", (event) => {
+    if (isJournalChatFixed() || !state.journalLayout.chatOpen) return;
+    if (state.journalLayout.editing) return;
+    if (event.target.closest?.("button, a, input, textarea, label")) return;
+    if (event.button != null && event.button !== 0) return;
+    const rect = panel.getBoundingClientRect();
+    journalChatGesture = {
+      type: "drag",
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
+    panel.classList.add("is-dragging");
+    beginGesture();
+    event.preventDefault();
+  });
+
+  panel.querySelectorAll(".journal-chat-resize").forEach((handle) => {
+    handle.addEventListener("pointerdown", (event) => {
+      if (isJournalChatFixed() || !state.journalLayout.chatOpen) return;
+      if (event.button != null && event.button !== 0) return;
+      applyFloatingChatGeom();
+      journalChatGesture = {
+        type: "resize",
+        dir: handle.dataset.dir || "se",
+        originX: event.clientX,
+        originY: event.clientY,
+        left: journalChatGeom.left,
+        top: journalChatGeom.top,
+        width: journalChatGeom.width,
+        height: journalChatGeom.height,
+      };
+      panel.classList.add("is-resizing");
+      beginGesture();
+      event.preventDefault();
+      event.stopPropagation();
+    });
+  });
+
+  $("#journal-chat-mode")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (isJournalChatFixed()) setJournalChatMode("floating");
+    else setJournalChatMode("fixed", "column");
+  });
+
+  if (typeof ResizeObserver !== "undefined") {
+    let resizeQuiet = null;
+    const ro = new ResizeObserver(() => {
+      if (!state.journalLayout.chatOpen || isJournalChatFixed() || journalChatGesture) return;
+      syncFloatingChatGeomFromDom();
+      if (resizeQuiet) clearTimeout(resizeQuiet);
+      resizeQuiet = setTimeout(() => persistJournalChatGeom(), 120);
+    });
+    ro.observe(panel);
+  }
+
+  window.addEventListener("resize", () => {
+    if (state.journalLayout.chatOpen && !isJournalChatFixed()) {
+      applyFloatingChatGeom();
+      persistJournalChatGeom();
+    }
+  });
 }
 
 function appendJournalChatMessage(role, text, day = null) {
@@ -2226,6 +2698,10 @@ function initJournalDockPosition() {
     if (journalDockDidDrag) {
       updateDockFromPointer(event.clientX, event.clientY);
       persistJournalDockPos();
+      if (state.journalLayout.chatOpen && !isJournalChatFixed()) {
+        applyFloatingChatGeom();
+        persistJournalChatGeom();
+      }
       // 드래그 직후 합성 click 차단
       const blockClick = (ev) => {
         ev.preventDefault();
@@ -2261,6 +2737,7 @@ function initJournalDock() {
   readJournalLayout();
   applyJournalLayout();
   initJournalDockPosition();
+  initJournalChatWindow();
   syncJournalChatBotLink();
   syncJournalChatEmpty();
   syncJournalChatSize();
@@ -2281,19 +2758,35 @@ function initJournalDock() {
     }
     if (action === "calendar") {
       state.journalLayout.showCalendar = !state.journalLayout.showCalendar;
+      if (
+        state.journalLayout.showCalendar &&
+        state.journalLayout.chatOpen &&
+        state.journalLayout.chatMode === "fixed" &&
+        state.journalLayout.chatSlot === "calendar"
+      ) {
+        state.journalLayout.chatSlot = "column";
+      }
       persistJournalLayout();
       applyJournalLayout();
       return;
     }
     if (action === "list") {
       state.journalLayout.showList = !state.journalLayout.showList;
+      if (
+        state.journalLayout.showList &&
+        state.journalLayout.chatOpen &&
+        state.journalLayout.chatMode === "fixed" &&
+        state.journalLayout.chatSlot === "list"
+      ) {
+        state.journalLayout.chatSlot = "column";
+      }
       persistJournalLayout();
       applyJournalLayout();
       return;
     }
     if (action === "edit") {
       state.journalLayout.editing = !state.journalLayout.editing;
-      if (state.journalLayout.editing) {
+      if (state.journalLayout.editing && state.journalLayout.chatMode !== "fixed") {
         state.journalLayout.chatOpen = false;
       }
       applyJournalLayout();
@@ -2308,53 +2801,163 @@ function initJournalDock() {
     }
   });
 
-  $("#journal-browse")?.addEventListener("click", (event) => {
+  const clearLayoutDropTargets = () => {
+    document
+      .querySelectorAll(
+        "#view-journals .is-drop-target, #journal-browse.is-drop-target, #journal-detail.is-drop-target"
+      )
+      .forEach((el) => el.classList.remove("is-drop-target"));
+  };
+
+  $("#view-journals")?.addEventListener("click", (event) => {
     const hideBtn = event.target.closest?.(".layout-panel-hide");
     if (!hideBtn || !state.journalLayout.editing) return;
     const panel = hideBtn.dataset.hidePanel;
     if (panel === "calendar") state.journalLayout.showCalendar = false;
     if (panel === "list") state.journalLayout.showList = false;
+    if (panel === "chat") {
+      state.journalLayout.chatOpen = false;
+      state.journalLayout.chatMode = "floating";
+      state.journalLayout.chatSlot = "column";
+    }
     persistJournalLayout();
     applyJournalLayout();
   });
 
+  const split = $("#journal-split");
   const browse = $("#journal-browse");
-  if (browse) {
+  if (split) {
     let dragPanel = null;
-    browse.addEventListener("dragstart", (event) => {
+    const resolveDropSlot = (event) => {
+      const panel = event.target.closest?.("[data-layout-panel]");
+      if (panel?.dataset.layoutPanel === "calendar") return "calendar";
+      if (panel?.dataset.layoutPanel === "list") return "list";
+      if (panel?.dataset.layoutPanel === "chat") {
+        // Dropping onto the chat column (including empty space under it) → stack into browse.
+        if (normalizeChatSlot(state.journalLayout.chatSlot) === "column") {
+          if (state.journalLayout.showCalendar) return "calendar";
+          if (state.journalLayout.showList) return "list";
+          return "stack";
+        }
+        return normalizeChatSlot(state.journalLayout.chatSlot);
+      }
+      if (panel?.dataset.layoutPanel === "detail" || event.target.closest?.("#journal-detail")) {
+        return "column";
+      }
+      if (event.target.closest?.("#journal-browse")) {
+        // empty browse gap → stack chat with browse panels
+        if (!state.journalLayout.showCalendar && !state.journalLayout.showList) return "stack";
+        return state.journalLayout.showCalendar ? "calendar" : "list";
+      }
+      return null;
+    };
+
+    split.addEventListener("dragstart", (event) => {
       if (!state.journalLayout.editing) {
         event.preventDefault();
         return;
       }
       const panel = event.target.closest?.("[data-layout-panel]");
-      if (!panel || (panel.dataset.layoutPanel !== "calendar" && panel.dataset.layoutPanel !== "list")) {
+      const kind = panel?.dataset.layoutPanel;
+      if (!panel || !["calendar", "list", "chat"].includes(kind)) {
         event.preventDefault();
         return;
       }
-      dragPanel = panel.dataset.layoutPanel;
+      if (kind === "chat" && !(state.journalLayout.chatOpen && isJournalChatFixed())) {
+        event.preventDefault();
+        return;
+      }
+      dragPanel = kind;
       event.dataTransfer.effectAllowed = "move";
+      try {
+        event.dataTransfer.setData("text/plain", kind);
+      } catch (_) {
+        /* ignore */
+      }
       panel.classList.add("is-dragging");
     });
-    browse.addEventListener("dragend", () => {
+
+    split.addEventListener("dragend", () => {
       dragPanel = null;
-      browse.querySelectorAll(".is-dragging").forEach((el) => el.classList.remove("is-dragging"));
+      clearLayoutDropTargets();
+      split.querySelectorAll(".is-dragging").forEach((el) => el.classList.remove("is-dragging"));
     });
-    browse.addEventListener("dragover", (event) => {
+
+    split.addEventListener("dragover", (event) => {
       if (!state.journalLayout.editing || !dragPanel) return;
       event.preventDefault();
+      clearLayoutDropTargets();
+      const slot = resolveDropSlot(event);
+      const panel = event.target.closest?.("[data-layout-panel]");
+      if (panel) panel.classList.add("is-drop-target");
+      else if (event.target.closest?.("#journal-browse")) browse?.classList.add("is-drop-target");
+      else if (event.target.closest?.("#journal-detail")) $("#journal-detail")?.classList.add("is-drop-target");
+      event.dataTransfer.dropEffect = slot ? "move" : "none";
     });
-    browse.addEventListener("drop", (event) => {
+
+    const stackChatWith = (other) => {
+      if (!isJournalChatFixed() || !state.journalLayout.chatOpen) return;
+      if (other !== "calendar" && other !== "list" && other !== "stack") return;
+      if (other === "calendar" && !state.journalLayout.showCalendar) return;
+      if (other === "list" && !state.journalLayout.showList) return;
+      const chatSlot = normalizeChatSlot(state.journalLayout.chatSlot);
+      if (chatSlot === "column") {
+        // Chat column empty gap / overlap → move into browse stack (nothing disappears).
+        setJournalChatSlot(other);
+      } else if (chatSlot === other) {
+        // Already stacked there → put chat back as its own column.
+        setJournalChatSlot("column");
+      } else {
+        setJournalChatSlot(other);
+      }
+    };
+
+    split.addEventListener("drop", (event) => {
       if (!state.journalLayout.editing || !dragPanel) return;
-      const target = event.target.closest?.("[data-layout-panel]");
-      if (!target) return;
       event.preventDefault();
-      const to = target.dataset.layoutPanel;
-      if (dragPanel === to) return;
-      if ((dragPanel === "calendar" || dragPanel === "list") && (to === "calendar" || to === "list")) {
+      const toPanel = event.target.closest?.("[data-layout-panel]")?.dataset.layoutPanel;
+      const toSlot = resolveDropSlot(event);
+      clearLayoutDropTargets();
+
+      // Calendar ↔ list: reorder only (never hide).
+      if (
+        (dragPanel === "calendar" || dragPanel === "list") &&
+        (toPanel === "calendar" || toPanel === "list") &&
+        dragPanel !== toPanel
+      ) {
         state.journalLayout.listFirst = !state.journalLayout.listFirst;
         persistJournalLayout();
         applyJournalLayout();
+        dragPanel = null;
+        return;
       }
+
+      // Drag calendar/list onto chat (incl. empty space under chat column) → stack together.
+      if ((dragPanel === "calendar" || dragPanel === "list") && toPanel === "chat") {
+        stackChatWith(dragPanel);
+        dragPanel = null;
+        return;
+      }
+
+      // Drag chat onto calendar/list/browse gap → stack into browse.
+      if (dragPanel === "chat" && (toPanel === "calendar" || toPanel === "list")) {
+        stackChatWith(toPanel);
+        dragPanel = null;
+        return;
+      }
+      if (dragPanel === "chat" && toSlot && toSlot !== "column") {
+        stackChatWith(toSlot);
+        dragPanel = null;
+        return;
+      }
+
+      // Drop chat onto detail → own side column.
+      if (dragPanel === "chat" && toSlot === "column") {
+        setJournalChatSlot("column");
+        dragPanel = null;
+        return;
+      }
+
       dragPanel = null;
     });
   }
