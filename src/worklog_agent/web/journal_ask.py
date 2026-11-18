@@ -424,6 +424,42 @@ def _apply_schedule_intent(cfg: AppConfig, intent_info: dict[str, Any]) -> dict[
     }
 
 
+def _extract_answer_days(answer: str) -> tuple[str, list[str]]:
+    """Strip DAY: trailer lines and collect related dates from trailer + body."""
+    text = str(answer or "")
+    days: list[str] = []
+
+    def _add(day: str) -> None:
+        value = str(day or "").strip()
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) and value not in days:
+            days.append(value)
+
+    # Trailer forms: DAY:YYYY-MM-DD or DAY:YYYY-MM-DD,YYYY-MM-DD,...
+    for match in re.finditer(r"(?im)^DAY:\s*([0-9,\-\s]+)\s*$", text):
+        for part in re.findall(r"\d{4}-\d{2}-\d{2}", match.group(1)):
+            _add(part)
+    # Also tolerate inline trailer at end without newline.
+    end = re.search(r"(?i)\n?DAY:\s*([0-9,\-\s]+)\s*$", text)
+    if end:
+        for part in re.findall(r"\d{4}-\d{2}-\d{2}", end.group(1)):
+            _add(part)
+
+    cleaned = re.sub(r"(?im)^\s*DAY:\s*[0-9,\-\s]+\s*$", "", text)
+    cleaned = re.sub(r"(?i)\n?DAY:\s*[0-9,\-\s]+\s*$", "", cleaned).strip()
+
+    # Korean dates in the visible answer (2026년 11월 2일).
+    for year, month, day in re.findall(r"(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일", cleaned):
+        try:
+            _add(f"{int(year):04d}-{int(month):02d}-{int(day):02d}")
+        except ValueError:
+            continue
+    # ISO dates mentioned in the body.
+    for part in re.findall(r"\b(\d{4}-\d{2}-\d{2})\b", cleaned):
+        _add(part)
+
+    return cleaned, days
+
+
 async def answer_journal_question(
     cfg: AppConfig,
     question: str,
@@ -498,9 +534,12 @@ async def answer_journal_question(
         "일지 검색·요약이 주 업무이고, 간단한 인사나 짧은 일상 대화에도 자연스럽고 친절하게 짧게 응답하세요. "
         "최근 대화가 있으면 그 문맥을 이어서 이해하고 답하세요. "
         "일지 내용만 근거로 한국어로 짧고 정확하게 답하세요. "
+        "답변은 GitHub Flavored Markdown을 사용하세요(굵게는 **텍스트**, 목록은 - 항목). "
         "인사·잡담에는 DAY 줄을 붙이지 마세요. "
-        "일지 관련 답변에서 관련 날짜가 있으면 답변 끝에 한 줄로 DAY:YYYY-MM-DD 형식으로 적어 주세요. "
-        "여러 날이면 가장 관련 있는 하루만 적으세요. 근거가 없으면 모른다고 말하세요. "
+        "일지 관련 답변에서 언급한 관련 날짜가 있으면 답변 맨 끝에 한 줄로 "
+        "DAY:YYYY-MM-DD 형식으로 적어 주세요. 여러 날이면 쉼표로 모두 나열하세요 "
+        "(예: DAY:2026-11-02,2026-10-29,2026-10-14). "
+        "본문에 적은 날짜는 DAY 줄에도 빠짐없이 넣으세요. 근거가 없으면 모른다고 말하세요. "
         "일지 생성·수집방 on/off·예약 추가/활성/삭제 요청은 서버가 따로 처리하므로, 필요하면 짧게 안내만 하세요."
     )
     parts = []
@@ -518,12 +557,9 @@ async def answer_journal_question(
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"일지 질의 실패: {exc}") from exc
 
-    days: list[str] = []
-    match = re.search(r"DAY:(\d{4}-\d{2}-\d{2})", answer or "")
-    if match:
-        days.append(match.group(1))
-        answer = re.sub(r"\n?DAY:\d{4}-\d{2}-\d{2}\s*$", "", answer).strip()
-    final = answer or "답변을 만들지 못했습니다."
+    final, days = _extract_answer_days(answer or "")
+    if not final:
+        final = "답변을 만들지 못했습니다."
     _remember(cfg, text, final, remember=remember)
     return {
         "intent": "search",

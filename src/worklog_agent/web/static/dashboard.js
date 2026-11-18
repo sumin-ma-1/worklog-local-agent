@@ -2397,22 +2397,45 @@ function initJournalChatWindow() {
   });
 }
 
-function appendJournalChatMessage(role, text, day = null) {
+function normalizeChatDays(days) {
+  const raw = Array.isArray(days) ? days : days ? [days] : [];
+  const out = [];
+  raw.forEach((item) => {
+    const day = String(item || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day) && !out.includes(day)) out.push(day);
+  });
+  return out;
+}
+
+function appendJournalChatMessage(role, text, days = null) {
   const log = $("#journal-chat-log");
   if (!log) return null;
   const el = document.createElement("div");
   const short = isShortChatText(text);
-  el.className = `journal-chat-msg is-${role === "user" ? "user" : "bot"}${short ? " is-short" : ""}`;
-  el.textContent = text;
-  if (day) {
+  const isBot = role !== "user";
+  el.className = `journal-chat-msg is-${isBot ? "bot" : "user"}${short ? " is-short" : ""}`;
+  if (isBot) {
+    const body = document.createElement("div");
+    body.className = "journal-chat-md markdown-body";
+    body.innerHTML = renderMarkdown(text);
+    el.appendChild(body);
+  } else {
+    el.textContent = text;
+  }
+  const dayList = normalizeChatDays(days);
+  if (dayList.length) {
     el.classList.remove("is-short");
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "chat-day-link";
-    btn.dataset.day = day;
-    btn.textContent = `${day} 일지 열기`;
-    el.appendChild(document.createElement("br"));
-    el.appendChild(btn);
+    const links = document.createElement("div");
+    links.className = "chat-day-links";
+    dayList.forEach((day) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chat-day-link";
+      btn.dataset.day = day;
+      btn.textContent = `${day} 일지 열기`;
+      links.appendChild(btn);
+    });
+    el.appendChild(links);
   }
   log.appendChild(el);
   syncJournalChatEmpty();
@@ -2431,14 +2454,16 @@ function appendJournalChatGenerateConfirm(answer, generate) {
   }
   const el = document.createElement("div");
   el.className = "journal-chat-msg is-bot";
-  el.textContent = answer || "일지를 생성할까요?";
+  const body = document.createElement("div");
+  body.className = "journal-chat-md markdown-body";
+  body.innerHTML = renderMarkdown(answer || "일지를 생성할까요?");
+  el.appendChild(body);
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "chat-run-link";
   btn.dataset.dates = dates.join(",");
   btn.dataset.label = generate?.label || dates[0];
   btn.textContent = `${generate?.label || dates[0]} 일지 생성`;
-  el.appendChild(document.createElement("br"));
   el.appendChild(btn);
   log.appendChild(el);
   syncJournalChatEmpty();
@@ -2489,8 +2514,8 @@ async function submitJournalChat(question) {
       loadSchedules().catch(() => {});
       return;
     }
-    const day = Array.isArray(data.days) && data.days[0] ? data.days[0] : null;
-    appendJournalChatMessage("bot", data.answer || "답변이 없습니다.", day);
+    const days = normalizeChatDays(data.days);
+    appendJournalChatMessage("bot", data.answer || "답변이 없습니다.", days);
   } catch (err) {
     if (pending) pending.remove();
     appendJournalChatMessage("bot", err.message || "질의에 실패했습니다.");

@@ -365,9 +365,9 @@ class TelegramBotWorker:
             return
 
         answer = str(result.get("answer") or "")
-        days = list(result.get("days") or [])
+        days = [str(day).strip() for day in list(result.get("days") or []) if str(day).strip()]
         if days:
-            answer = f"{answer}\n\n관련 날짜: {days[0]}"
+            answer = f"{answer}\n\n관련 날짜: {', '.join(days)}"
         await self.client.send_message(chat_id, answer)
 
     async def _handle_callback(self, query: dict) -> None:

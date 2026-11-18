@@ -1543,7 +1543,6 @@ main {
   border-radius: 14px;
   font-size: 14px;
   line-height: 1.45;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
@@ -1556,12 +1555,41 @@ main {
   justify-self: end;
   background: #e8eefc;
   color: #1e3a8a;
+  white-space: pre-wrap;
 }
 
 .journal-chat-msg.is-bot {
   justify-self: start;
   background: #f3f5f8;
   color: var(--ink);
+  white-space: normal;
+}
+
+.journal-chat-msg .journal-chat-md {
+  white-space: normal;
+}
+
+.journal-chat-msg .journal-chat-md > :first-child {
+  margin-top: 0;
+}
+
+.journal-chat-msg .journal-chat-md > :last-child {
+  margin-bottom: 0;
+}
+
+.journal-chat-msg .journal-chat-md p,
+.journal-chat-msg .journal-chat-md ul,
+.journal-chat-msg .journal-chat-md ol {
+  margin: 0.35em 0;
+}
+
+.journal-chat-msg .journal-chat-md li {
+  margin: 0.15em 0;
+}
+
+.journal-chat-msg .journal-chat-md strong {
+  font-weight: 700;
+  color: inherit;
 }
 
 .journal-chat-msg.is-thinking {
@@ -1604,10 +1632,18 @@ main {
   }
 }
 
+.journal-chat-msg .chat-day-links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 8px;
+}
+
 .journal-chat-msg .chat-day-link,
 .journal-chat-msg .chat-run-link {
   display: inline-flex;
-  margin-top: 6px;
+  margin-top: 0;
   border: 0;
   background: transparent;
   color: var(--accent-hover);
